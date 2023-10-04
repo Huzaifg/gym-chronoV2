@@ -1,0 +1,1 @@
+A dataset of reference paths which are all circles of different radii. For training purposes
