@@ -1,0 +1,41 @@
+# Ignore Python bytecode files
+__pycache__/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore text editor backup and swap files
+*~
+.*.swp
+
+# Ignore virtual environment directories
+venv/
+env/
+node_modules/
+
+# Ignore compiled files
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore IDE-specific files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# Ignore log files
+*.log
+
+# Ignore compiled binary files
+*.exe
+*.dll
+*.out
+
+# Ignore package manager directories
+# (e.g., pipenv, poetry, npm, yarn)
+.lock/
+*.zip
+**/data/
+*.pov
