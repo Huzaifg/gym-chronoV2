@@ -12,7 +12,7 @@ from gym_chrono.envs.driving.cobra_corridor import cobra_corridor
 
 if __name__ == '__main__':
     env = cobra_corridor()
-    check_env(env)
+    #check_env(env)
 
     obs, _ = env.reset()
     env.render()

@@ -1,6 +1,7 @@
 # Chrono imports
 import pychrono as chrono
 import pychrono.robot as robot_chrono
+import cmath
 try:
     from pychrono import irrlicht as chronoirr
 except:
@@ -64,6 +65,12 @@ class cobra_corridor(ChronoBaseEnv):
         self.system = None  # Chrono system set in reset method
         self.ground = None  # Ground body set in reset method
         self.rover = None  # Rover set in reset method
+        
+        self.num_obs = 0
+        self.x_obs = None
+        self.y_obs = None
+        
+        self._initpos = chrono.ChVectorD(0.0, 0.0, 0.0) # Rover initial position
         # Frequncy in which we apply control
         self._control_frequency = 10
         # Dynamics timestep
@@ -75,6 +82,8 @@ class cobra_corridor(ChronoBaseEnv):
         self._terrain_length = 20
         self._terrain_width = 20
         self._terrain_height = 2
+        
+
 
         # ---------------------------------
         # Gym Environment variables
@@ -115,13 +124,11 @@ class cobra_corridor(ChronoBaseEnv):
         ground_mat = chrono.ChMaterialSurfaceNSC()
         self.ground = chrono.ChBodyEasyBox(
             self._terrain_length, self._terrain_width, self._terrain_height, 1000, True, True, ground_mat)
-        self.ground.SetPos(chrono.ChVectorD(0, 0, -self._terrain_height / 2))
+        self.ground.SetPos(chrono.ChVectorD(0, 0, -self._terrain_height / 2 ))
         self.ground.SetBodyFixed(True)
         self.ground.GetVisualShape(0).SetTexture(
             chrono.GetChronoDataFile('textures/concrete.jpg'), 200, 200)
         self.system.Add(self.ground)
-
-        self.add_obstacles(seed)
 
         # -----------------------------
         # Create the COBRA
@@ -134,6 +141,12 @@ class cobra_corridor(ChronoBaseEnv):
 
         # Initialize position of robot randomly
         self.initialize_robot_pos(seed)
+        
+        # -----------------------------
+        # Add obstacles
+        # -----------------------------
+        
+        self.add_obstacles(seed)
 
         # -----------------------------
         # Add sensors
@@ -153,7 +166,7 @@ class cobra_corridor(ChronoBaseEnv):
             self.vis.Initialize()
             self.vis.AddSkyBox()
             self.vis.AddCamera(chrono.ChVectorD(
-                0, 2.5, 1.5), chrono.ChVectorD(0, 0, 1))
+                0, 11, 10), chrono.ChVectorD(0, 0, 1))
             self.vis.AddTypicalLights()
             self.vis.AddLightWithShadow(chrono.ChVectorD(
                 1.5, -2.5, 5.5), chrono.ChVectorD(0, 0, 0.5), 3, 4, 10, 40, 512)
@@ -255,16 +268,36 @@ class cobra_corridor(ChronoBaseEnv):
         """
         Initialize the pose of the robot
         """
+        self._initpos = chrono.ChVectorD(0, -0.2, 0.1)
+        
         # For now no randomness
         self.rover.Initialize(chrono.ChFrameD(chrono.ChVectorD(
-            0, -0.2, -0.3), chrono.ChQuaternionD(1, 0, 0, 0)))
+            0, -0.2, 0.1), chrono.ChQuaternionD(1, 0, 0, 0)))
 
     def set_goalPoint(self, seed=1):
         """
         Set the goal point for the rover
         """
+        
+        np.random.seed(seed)
+        
+        a = -8.5
+        b = 8.5
+        
+        redo = True
+        while(redo):
+            goal_pos = a + (b - a) * np.random.rand(2)
+            for i in range(self.num_obs):
+                if np.linalg.norm(np.array([self.x_obs[i], self.y_obs[i]]) - goal_pos) < 1:
+                    redo = True
+                    break
+                else:
+                    redo = False
+        
+        
         # Some random goal point for now
-        self.goal = np.array([1, 1, 0.5])
+        self.goal = np.array([goal_pos[0], goal_pos[1] , 0.1])
+        print('Goal: ', self.goal)
 
     def get_observation(self):
         """
@@ -273,13 +306,46 @@ class cobra_corridor(ChronoBaseEnv):
         # For not just the priveledged position of the rover
         return chVector_to_npArray(self.rover.GetChassis().GetPos())
 
-    # ------------------------------------- TODO: Add Random Objects to the environment -------------------------------------
+    # -------------Add Random Objects to the environment -------------------------------------
 
     def add_obstacles(self, seed=1):
         """
         Add random obstacles to the environment
         """
-        pass
+        np.random.seed(seed)
+        
+        self.num_obs = np.random.randint(5,10)
+        self.x_obs = np.zeros(self.num_obs)
+        self.y_obs = np.zeros(self.num_obs)
+        
+        # Generate a random float between -8 and 8        
+        for i in range(self.num_obs):
+            a = -8
+            b = 8
+            x = a + (b - a) * np.random.rand()
+            y = a + (b - a) * np.random.rand()
+            while abs(x - self._initpos.x) < 2:
+                x = a + (b - a) * np.random.rand()
+            while abs(y - self._initpos.y) < 2:
+                y = a + (b - a) * np.random.rand()
+            self.x_obs[i] = x
+            self.y_obs[i] = y
+        
+        # Add obstacles to the environment
+        for i in range(self.num_obs):
+            obstacle_mat = chrono.ChMaterialSurfaceNSC()
+            obstacle = chrono.ChBodyEasyCylinder(chrono.ChAxis_Z,
+                                             1.0, 1.0, # radius, height
+                                             100,       # density
+                                             True,      # visualization?
+                                             False,      # collision?
+                                             obstacle_mat)   # contact material(
+            obstacle.SetPos(chrono.ChVectorD(self.x_obs[i], self.y_obs[i], 0.5))
+            obstacle.SetBodyFixed(True)
+            obstacle.GetVisualShape(0).SetTexture(
+                chrono.GetChronoDataFile('textures/concrete.jpg'), 200, 200)
+            self.system.Add(obstacle)
+
 
     # ------------------------------------- TODO: Add Sensors if necessary -------------------------------------
     def add_sensors(self):
@@ -289,9 +355,17 @@ class cobra_corridor(ChronoBaseEnv):
 
         pass
 
-    # ------------------------------------- TODO: Check for collision with objects -------------------------------------
+    # ------------ Check for collision with objects -------------------------------------
     def check_collision(self):
         """
         Check if we collide with any of the objects
         """
-        self._collision = False
+        collide = False
+        cur_pos = self.rover.GetChassis().GetPos()
+        for i in range(self.num_obs):
+            if abs(cur_pos.x - self.x_obs[i]) < 1 and abs(cur_pos.y - self.y_obs[i]) < 1:
+                collide = True
+                break
+        
+        
+        self._collision = collide
