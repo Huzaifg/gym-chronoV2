@@ -34,41 +34,21 @@ def make_env(rank: int, seed: int = 0) -> Callable:
     return _init
 
 
-class CheckpointCallback(BaseCallback):
-    def __init__(self, save_freq, save_path, verbose=1):
-        super(CheckpointCallback, self).__init__(verbose)
-        self.save_freq = save_freq  # Number of training iterations between checkpoints
-        self.save_path = save_path  # Directory to save checkpoints
-
-    def _on_step(self) -> bool:
-        if self.num_timesteps % self.save_freq == 0:
-            self.model.save(os.path.join(
-                self.save_path, f"ppo_checkpoint_{self.num_timesteps}"))
-        return True
-
-
 if __name__ == '__main__':
     # env = cobra_corridor()
     ####### PARALLEL ##################
 
-    num_cpu = 12
+    num_cpu = 8
     # Create the vectorized environment
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
 
-    model = PPO('MlpPolicy', env, learning_rate=1e-3, verbose=1)
-
-    for i in range(100):
-        print(i)
-        model.learn(30000)
-        checkpoint_dir = 'ppo_checkpoints'
-        os.makedirs(checkpoint_dir, exist_ok=True)
-        model.save(os.path.join(checkpoint_dir, f"ppo_checkpoint{i}"))
-        model = PPO.load(os.path.join(
-            checkpoint_dir, f"ppo_checkpoint{i}"), env)
+    model = PPO('MlpPolicy', env, learning_rate=1e-3, verbose=1).learn(2000000)
 
     mean_reward, std_reward = evaluate_policy(
         model, env, n_eval_episodes=100)
     print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
+
+
 ###############################
 
 ####### SEQUENTIAL ##################
