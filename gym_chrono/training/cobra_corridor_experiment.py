@@ -25,10 +25,11 @@ if __name__ == '__main__':
     n_steps = 1000000
     for step in range(n_steps):
         print(f"Step {step + 1}")
-        obs, reward, terminated, truncated, info = env.step(
-            env.action_space.sample())
+        # obs, reward, terminated, truncated, info = env.step(
+        #     env.action_space.sample())
+        obs, reward, terminated, truncated, info = env.step([0, 0.3])
         done = terminated or truncated
-        print("obs=", obs, "reward=", reward, "done=", done)
+        # print("obs=", obs, "reward=", reward, "done=", done)
         env.render()
         if done:
             print("Goal reached!", "reward=", reward)

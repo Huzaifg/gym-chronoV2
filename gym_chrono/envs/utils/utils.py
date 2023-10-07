@@ -74,3 +74,10 @@ def chVector_to_npArray(v: chrono.ChVectorD):
         raise TypeError
 
     return np.array([v.x, v.y, v.z])
+
+
+def npArray_to_chVector(v: np.ndarray):
+    if not isinstance(v, np.ndarray):
+        raise TypeError
+
+    return chrono.ChVectorD(v[0], v[1], v[2])

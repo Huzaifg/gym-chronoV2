@@ -3,11 +3,15 @@ import gymnasium as gym
 from typing import Callable
 import os
 
-from stable_baselines3 import PPO
+import matplotlib.pyplot as plt
+
+from stable_baselines3 import PPO, HerReplayBuffer, SAC
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from stable_baselines3.common.callbacks import BaseCallback, ProgressBarCallback, EvalCallback
+from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback
 
 
@@ -38,11 +42,15 @@ if __name__ == '__main__':
     # env = cobra_corridor()
     ####### PARALLEL ##################
 
-    num_cpu = 8
+    log_dir = "./logs/"
+    os.makedirs(log_dir, exist_ok=True)
+    num_cpu = 12
+    n_steps = 1024
     # Create the vectorized environment
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-
-    model = PPO('MlpPolicy', env, learning_rate=1e-3, verbose=1).learn(2000000)
+    model = PPO('MlpPolicy', env, learning_rate=1e-3, n_steps=n_steps,
+                batch_size=64, verbose=1)
+    model.learn(100000)
 
     mean_reward, std_reward = evaluate_policy(
         model, env, n_eval_episodes=100)
@@ -54,6 +62,6 @@ if __name__ == '__main__':
 ####### SEQUENTIAL ##################
 # model = PPO('MlpPolicy', env, verbose=1).learn(100)
 ###########################
-# model.save(f"PPO_cobra")
+    model.save(f"PPO_cobra")
 # mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=100)
 # print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
