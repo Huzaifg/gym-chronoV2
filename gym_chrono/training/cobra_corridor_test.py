@@ -13,7 +13,7 @@ env = cobra_corridor()
 
 loaded_model = PPO.load("PPO_cobra")
 
-# i = 97
+# i = 50
 # checkpoint_dir = 'ppo_checkpoints'
 
 # loaded_model = PPO.load(os.path.join(
@@ -23,7 +23,7 @@ loaded_model = PPO.load("PPO_cobra")
 #     loaded_model, env, n_eval_episodes=5)
 # print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
 
-sim_time = 50
+sim_time = 65
 timeStep = 0.1
 
 totalSteps = int(sim_time / timeStep)
@@ -40,10 +40,10 @@ for step in range(totalSteps):
     if (teriminated or truncated):
         # Note that the VecEnv resets automatically
         # when a done signal is encountered
-        print("Time Out", "reward=", reward)
+        # print("Time Out", "reward=", reward)
         print("Goal is at: ", env.goal)
         print("Final position is: ", chVector_to_npArray(
             env.rover.GetChassis().GetPos()))
         print("Distance is: ", env._old_distance)
         obs, _ = env.reset(seed=0)
-        # break
+        break

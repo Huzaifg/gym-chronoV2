@@ -29,7 +29,7 @@ if __name__ == '__main__':
         #     env.action_space.sample())
         obs, reward, terminated, truncated, info = env.step([0, 0.3])
         done = terminated or truncated
-        # print("obs=", obs, "reward=", reward, "done=", done)
+        print("obs=", obs, "reward=", reward, "done=", done)
         env.render()
         if done:
             print("Goal reached!", "reward=", reward)

@@ -52,7 +52,7 @@ class cobra_corridor(ChronoBaseEnv):
         self.max_speed = 2*np.pi
 
         # self.num_obs = np.random.randint(5, 10)
-        self.num_obs = 5
+        self.num_obs = 0
         # Define action space -> These will scale the max steer and max speed linearly
         self.action_space = gym.spaces.Box(
             low=-1.0, high=1.0, shape=(2,), dtype=np.float64)
@@ -229,7 +229,7 @@ class cobra_corridor(ChronoBaseEnv):
                 self.vis.Initialize()
                 self.vis.AddSkyBox()
                 self.vis.AddCamera(chrono.ChVectorD(
-                    0, 8, 8), chrono.ChVectorD(0, 0, 1))
+                    0, 11, 10), chrono.ChVectorD(0, 0, 1))
                 self.vis.AddTypicalLights()
                 self.vis.AddLightWithShadow(chrono.ChVectorD(
                     1.5, -2.5, 5.5), chrono.ChVectorD(0, 0, 0.5), 3, 4, 10, 40, 512)
@@ -245,8 +245,8 @@ class cobra_corridor(ChronoBaseEnv):
         """
         Get the reward for the current step
         """
-        scale_pos = 250
-        scale_neg = 100
+        scale_pos = 200
+        scale_neg = 200
         # Distance to goal
         # distance = np.linalg.norm(self.observation[:3] - self.goal)
         distance = self._vector_to_goal.Length()  # chrono vector
@@ -267,26 +267,33 @@ class cobra_corridor(ChronoBaseEnv):
 
         # If we are within a certain distance of the goal -> Terminate and give big reward
         # if np.linalg.norm(self.observation[:3] - self.goal) < 0.4:
-        if np.linalg.norm(self._vector_to_goal.Length() - self.goal) < 0.4:
+        if np.linalg.norm(self._vector_to_goal.Length()) < 0.75:
+            print('--------------------------------------------------------------')
             print('Goal Reached')
-            self.reward += 5000
+            print('Initial position: ', self._initpos)
+            print('Goal position: ', self.goal)
+            print('--------------------------------------------------------------')
+            self.reward += 2500
             self._debug_reward += self.reward
             self._terminated = True
 
         # If we have exceeded the max time -> Terminate
         if self.system.GetChTime() > self._max_time:
+            print('--------------------------------------------------------------')
             print('Time out')
+            print('Initial position: ', self._initpos)
             # dist = np.linalg.norm(self.observation[:3] - self.goal)
             dist = self._vector_to_goal.Length()
-            # print('\t Final position of rover: ', self.observation[:3])
-            print('\t Final position of rover: ',
+            print('Final position of rover: ',
                   self.rover.GetChassis().GetPos())
-            print('\t Distance to goal: ', dist)
+            print('Goal position: ', self.goal)
+            print('Distance to goal: ', dist)
             # Penalize based on how far we are from the goal
             self.reward -= 100 * dist
+
             self._debug_reward += self.reward
-            print('\t Reward: ', self.reward)
-            print('\t Accumulated Reward: ', self._debug_reward)
+            print('Reward: ', self.reward)
+            print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
             self._terminated = True
 
@@ -297,15 +304,23 @@ class cobra_corridor(ChronoBaseEnv):
         # If we have collided -> Truncate and give big negative reward
         self.check_collision()
         if self._collision:
+            print('--------------------------------------------------------------')
             print('Crashed')
-            self.reward -= 2500
+            print('Vehicle Postion: ', self.vehicle_pos)
+            print('Goal Position: ', self.goal)
+            print('--------------------------------------------------------------')
+            self.reward -= 400
             self._debug_reward += self.reward
             self._truncated = True
         # Vehicle should not fall off the terrain
-        elif ((abs(self.vehicle_pos.x) > (self._terrain_length / 2.0 - 1.5)) or (abs(
-                self.vehicle_pos.y) > (self._terrain_width / 2. - 1.5)) or (self.vehicle_pos.z < 0)):
+        elif ((abs(self.vehicle_pos.x) > (self._terrain_length / 2.0 - 0.5)) or (abs(
+                self.vehicle_pos.y) > (self._terrain_width / 2. - 0.5)) or (self.vehicle_pos.z < 0)):
+            print('--------------------------------------------------------------')
             print('Outside of terrain')
-            self.reward -= 2500
+            print('Vehicle Position: ', self.vehicle_pos)
+            print('Goal Position: ', self.goal)
+            print('--------------------------------------------------------------')
+            self.reward -= 400
             self._debug_reward += self.reward
             self._truncated = True
 
@@ -319,7 +334,6 @@ class cobra_corridor(ChronoBaseEnv):
         self.rover.Initialize(chrono.ChFrameD(
             self._initpos, chrono.ChQuaternionD(1, 0, 0, 0)))
 
-        print('Initial position: ', self._initpos)
         self.vehicle_pos = self._initpos
 
     def set_goalPoint(self, seed=1):
@@ -328,8 +342,8 @@ class cobra_corridor(ChronoBaseEnv):
         """
         # np.random.seed(seed)
 
-        a = -8.5
-        b = 8.5
+        a = -8.
+        b = 8.
 
         redo = True
         while (redo):
@@ -343,10 +357,15 @@ class cobra_corridor(ChronoBaseEnv):
                     break
                 else:
                     redo = False
+            # Check if the point is too close to initial position of the rover
+            if abs(goal_pos[0] - self._initpos.x) < 2:
+                redo = True
+            if abs(goal_pos[1] - self._initpos.y) < 2:
+                redo = True
 
         # Some random goal point for now
         self.goal = np.array([goal_pos[0], goal_pos[1], 0.08144073])
-        print('Goal: ', self.goal)
+        # print('Goal: ', self.goal)
 
         # -----------------------------
         # Set up goal visualization
