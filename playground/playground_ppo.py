@@ -25,11 +25,11 @@ if __name__ == '__main__':
 
     num_cpu = 8
     # Create the vectorized environment
-    env = gym.make("LunarLander-v2",render_mode='human')
+    env = gym.make('Pusher-v4',render_mode='human')
 
-    model = PPO('MlpPolicy', env, learning_rate=1e-3, verbose=1)
+    model = PPO('MlpPolicy', env, learning_rate=5e-4, verbose=1)
 
-    for i in range(100):
+    for i in range(10000):
         print(i)
         model.learn(30000)
         checkpoint_dir = 'ppo_checkpoints'
