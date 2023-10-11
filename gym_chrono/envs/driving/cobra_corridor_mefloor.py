@@ -258,6 +258,15 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             self.vis.BeginScene()
             self.vis.Render()
             self.vis.EndScene()
+            
+        if mode == 'rgb_array':
+            camera_buffer_RGBA8 = self.cam.GetMostRecentRGBA8Buffer()
+            if camera_buffer_RGBA8.HasData():
+                rgb = camera_buffer_RGBA8.GetRGBA8Data()[:, :, 0:3]
+            else:
+                rgb = np.zeros((self.camera_height, self.camera_width, 3))
+            return rgb
+        
         else:
             raise NotImplementedError
 
@@ -506,12 +515,23 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         cam_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.18, 0, 0.35),
                                     chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
 
-
+        self.camera_width = 1280
+        self.camera_height = 720
         self.cam = sens.ChCameraSensor(self.rover.GetChassis().GetBody(), 30, cam_offset_pose, 1280,  720, 1.408,2)
         self.cam.PushFilter(sens.ChFilterVisualize(1280, 720))
         self.cam.PushFilter(sens.ChFilterRGBA8Access())
         self._sens_manager.AddSensor(self.cam)
         print("added_sen")
+        
+        lidar_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.0, 0, 0.4),
+                              chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
+        lidar = sens.ChLidarSensor(self.rover.GetChassis().GetBody(), 5., lidar_offset_pose, 90, 300,
+                            2*chrono.CH_C_PI, chrono.CH_C_PI / 12, -chrono.CH_C_PI / 6, 100., 0)
+        lidar.PushFilter(sens.ChFilterDIAccess())
+        lidar.PushFilter(sens.ChFilterPCfromDepth())
+        lidar.PushFilter(sens.ChFilterXYZIAccess())
+        lidar.PushFilter(sens.ChFilterVisualizePointCloud(1280, 720, 1))
+        self._sens_manager.AddSensor(lidar)
         
 
     # ------------ Check for collision with objects -------------------------------------
