@@ -70,19 +70,6 @@ def make_env(rank: int, seed: int = 0) -> Callable:
     return _init
 
 
-class CheckpointCallback(BaseCallback):
-    def __init__(self, save_freq, save_path, verbose=1):
-        super(CheckpointCallback, self).__init__(verbose)
-        self.save_freq = save_freq  # Number of training iterations between checkpoints
-        self.save_path = save_path  # Directory to save checkpoints
-
-    def _on_step(self) -> bool:
-        if self.num_timesteps % self.save_freq == 0:
-            self.model.save(os.path.join(
-                self.save_path, f"ppo_checkpoint_{self.num_timesteps}"))
-        return True
-
-
 if __name__ == '__main__':
     env_single = cobra_corridor()
     ####### PARALLEL ##################
@@ -97,7 +84,7 @@ if __name__ == '__main__':
     total_timesteps = 1000 * n_steps * num_cpu
 
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
-                         net_arch=dict(pi=[64, 128, 64], vf=[64, 128, 64]))
+                         net_arch=dict(pi=[64, 128, 128, 64], vf=[64, 128, 128, 64]))
 
     log_path = "logs/"
     # set up logger
