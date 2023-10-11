@@ -215,12 +215,16 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         for i in range(self._steps_per_control):
             self.rover.Update()
             self.system.DoStepDynamics(self._step_size)
+            self._sens_manager.Update()
+            #print(self.rover.GetChassis().GetPos())
 
         # Get the observation
         self.observation = self.get_observation()
+        
         # Get reward
         self.reward = self.get_reward()
         self._debug_reward += self.reward
+        
         # Check if we are done
         self._is_terminated()
         self._is_truncated()
@@ -265,6 +269,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         scale_neg = 200
         # Distance to goal
         # distance = np.linalg.norm(self.observation[:3] - self.goal)
+        
         distance = self._vector_to_goal.Length()  # chrono vector
         if (self._old_distance > distance):
             reward = scale_pos * (self._old_distance - distance)
@@ -495,8 +500,19 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         """
         Add sensors to the rover
         """
+        
+        self._sens_manager = sens.ChSensorManager(self.system)
 
-        pass
+        cam_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.18, 0, 0.35),
+                                    chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
+
+
+        self.cam = sens.ChCameraSensor(self.rover.GetChassis().GetBody(), 30, cam_offset_pose, 1280,  720, 1.408,2)
+        self.cam.PushFilter(sens.ChFilterVisualize(1280, 720))
+        self.cam.PushFilter(sens.ChFilterRGBA8Access())
+        self._sens_manager.AddSensor(self.cam)
+        print("added_sen")
+        
 
     # ------------ Check for collision with objects -------------------------------------
     def check_collision(self):

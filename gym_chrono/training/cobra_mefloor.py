@@ -82,7 +82,7 @@ class CheckpointCallback(BaseCallback):
                 self.save_path, f"ppo_checkpoint_{self.num_timesteps}"))
         return True
 
-
+        
 if __name__ == '__main__':
     env_single = cobra_corridor_mefloor()
     ####### PARALLEL ##################
@@ -112,11 +112,9 @@ if __name__ == '__main__':
     std_reward_store = []
     num_of_saves = 100
     training_steps_per_save = total_timesteps // num_of_saves
-    env.render(mode='human')
 
     for i in range(num_of_saves):
         print(i)
-        env.render(mode='human')
         model.learn(training_steps_per_save, callback=TensorboardCallback())
         checkpoint_dir = 'ppo_checkpoints'
         os.makedirs(checkpoint_dir, exist_ok=True)
