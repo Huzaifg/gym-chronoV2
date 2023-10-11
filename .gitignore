@@ -1,5 +1,5 @@
 # Ignore Python bytecode files
-__pycache__/
+**/__pycache__/
 
 # Ignore system files
 .DS_Store

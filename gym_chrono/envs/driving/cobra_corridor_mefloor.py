@@ -137,22 +137,25 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         ground_mat = chrono.ChMaterialSurfaceNSC()
         room_mmesh = chrono.ChTriangleMeshConnected()
         current_directory = os.getcwd()
-        room_mmesh.LoadWavefrontMesh(current_directory+"/../envs/data/environment/hallway.obj", False, True)
-        
+        room_mmesh.LoadWavefrontMesh(
+            current_directory+"/../envs/data/environment/hallway.obj", False, True)
+
         room_contact_mesh = chrono.ChTriangleMeshConnected()
-        room_contact_mesh.LoadWavefrontMesh(current_directory+"/../envs/data/environment/hallway.obj", False, True)
-        
+        room_contact_mesh.LoadWavefrontMesh(
+            current_directory+"/../envs/data/environment/hallway.obj", False, True)
+
         room_trimesh_shape = chrono.ChTriangleMeshShape()
         room_trimesh_shape.SetMesh(room_mmesh)
         room_trimesh_shape.SetName("Hallway Mesh")
         room_trimesh_shape.SetMutable(False)
-        
+
         room_mesh_body = chrono.ChBody()
         room_mesh_body.SetPos(chrono.ChVectorD(-2, -2, -0.1))
         room_mesh_body.AddVisualShape(room_trimesh_shape)
         room_mesh_body.SetBodyFixed(True)
         room_mesh_body.GetCollisionModel().ClearModel()
-        room_mesh_body.GetCollisionModel().AddTriangleMesh(ground_mat, room_contact_mesh, True, True)
+        room_mesh_body.GetCollisionModel().AddTriangleMesh(
+            ground_mat, room_contact_mesh, True, True)
         room_mesh_body.GetCollisionModel().BuildModel()
         room_mesh_body.SetCollide(True)
 
@@ -216,15 +219,15 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             self.rover.Update()
             self.system.DoStepDynamics(self._step_size)
             self._sens_manager.Update()
-            #print(self.rover.GetChassis().GetPos())
+            # print(self.rover.GetChassis().GetPos())
 
         # Get the observation
         self.observation = self.get_observation()
-        
+
         # Get reward
         self.reward = self.get_reward()
         self._debug_reward += self.reward
-        
+
         # Check if we are done
         self._is_terminated()
         self._is_truncated()
@@ -258,15 +261,15 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             self.vis.BeginScene()
             self.vis.Render()
             self.vis.EndScene()
-            
-        if mode == 'rgb_array':
+
+        elif mode == 'rgb_array':
             camera_buffer_RGBA8 = self.cam.GetMostRecentRGBA8Buffer()
             if camera_buffer_RGBA8.HasData():
                 rgb = camera_buffer_RGBA8.GetRGBA8Data()[:, :, 0:3]
             else:
                 rgb = np.zeros((self.camera_height, self.camera_width, 3))
             return rgb
-        
+
         else:
             raise NotImplementedError
 
@@ -278,7 +281,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         scale_neg = 200
         # Distance to goal
         # distance = np.linalg.norm(self.observation[:3] - self.goal)
-        
+
         distance = self._vector_to_goal.Length()  # chrono vector
         if (self._old_distance > distance):
             reward = scale_pos * (self._old_distance - distance)
@@ -509,32 +512,35 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         """
         Add sensors to the rover
         """
-        
+
         self._sens_manager = sens.ChSensorManager(self.system)
 
         cam_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.18, 0, 0.35),
-                                    chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
+                                          chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
 
         self.camera_width = 1280
         self.camera_height = 720
-        self.cam = sens.ChCameraSensor(self.rover.GetChassis().GetBody(), 30, cam_offset_pose, 1280,  720, 1.408,2)
-        self.cam.PushFilter(sens.ChFilterVisualize(1280, 720))
+        self.cam = sens.ChCameraSensor(self.rover.GetChassis(
+        ).GetBody(), 30, cam_offset_pose, 1280,  720, 1.408, 2)
+        self.cam.PushFilter(sens.ChFilterVisualize(1280, 720, "trial"))
         self.cam.PushFilter(sens.ChFilterRGBA8Access())
+        self.cam.SetName("Camera Sensor")
         self._sens_manager.AddSensor(self.cam)
-        print("added_sen")
-        
+
         lidar_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.0, 0, 0.4),
-                              chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
+                                            chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
         lidar = sens.ChLidarSensor(self.rover.GetChassis().GetBody(), 5., lidar_offset_pose, 90, 300,
-                            2*chrono.CH_C_PI, chrono.CH_C_PI / 12, -chrono.CH_C_PI / 6, 100., 0)
+                                   2*chrono.CH_C_PI, chrono.CH_C_PI / 12, -chrono.CH_C_PI / 6, 100., 0)
         lidar.PushFilter(sens.ChFilterDIAccess())
         lidar.PushFilter(sens.ChFilterPCfromDepth())
         lidar.PushFilter(sens.ChFilterXYZIAccess())
-        lidar.PushFilter(sens.ChFilterVisualizePointCloud(1280, 720, 1))
+        lidar.PushFilter(sens.ChFilterVisualizePointCloud(
+            1280, 720, 1., "trial2"))
+        lidar.SetName("LIDAR Sensor")
         self._sens_manager.AddSensor(lidar)
-        
 
     # ------------ Check for collision with objects -------------------------------------
+
     def check_collision(self):
         """
         Check if we collide with any of the objects
