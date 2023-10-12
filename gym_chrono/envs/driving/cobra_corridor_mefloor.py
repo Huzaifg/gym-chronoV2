@@ -87,7 +87,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self.camera_width = 640
         self.camera_height = 320
         self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=(3,640,320), dtype=np.float64)
+            low=0, high=255, shape=(3,640,320), dtype=np.uint8)
 
         # ---------------------------------
         # Gym Environment variables
@@ -355,10 +355,9 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         rgb_data = None
         if camera_buffer_RGBA8.HasData():
             rgb_data = camera_buffer_RGBA8.GetRGBA8Data()[:, :, 0:3]
-            rgb_data = np.transpose(rgb_data, (2, 1, 0))
+            rgb_data = np.transpose(rgb_data, (2, 1, 0)).astype(np.uint8)
         else:
-            rgb_data = np.zeros((3, self.camera_width, self.camera_height)) 
-        
+            rgb_data = np.zeros((3, self.camera_width, self.camera_height)).astype(np.uint8)
         # For not just the priveledged position of the rover
         return rgb_data
 
