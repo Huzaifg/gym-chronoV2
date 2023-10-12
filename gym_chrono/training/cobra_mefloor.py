@@ -1,4 +1,5 @@
 import gymnasium as gym
+import cv2
 
 from typing import Callable
 import os
@@ -86,8 +87,12 @@ class CheckpointCallback(BaseCallback):
 if __name__ == '__main__':
     env_single = cobra_corridor_mefloor()
     ####### PARALLEL ##################
+    
+    import torch
+    torch.cuda.is_available = lambda : False
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    num_cpu = 1
+    num_cpu = 8
     n_steps = 500  # Set to make an update after the end of 1 episode (50 s)
 
     # Set mini batch is the experiences from one episode (50 s) so the whole batch is consumed to make an update
@@ -97,14 +102,14 @@ if __name__ == '__main__':
     total_timesteps = 1000 * n_steps * num_cpu
 
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
-                         net_arch=dict(pi=[64, 128, 64], vf=[64, 128, 64]))
+                         net_arch=dict(pi=[1024, 512, 256, 32, 16, 32, 64], vf=[1024, 512, 256, 32, 16, 32, 64]))
 
     log_path = "logs/"
     # set up logger
     new_logger = configure(log_path, ["stdout", "csv", "tensorboard"])
     # Vectorized envieroment
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    model = PPO('MlpPolicy', env, learning_rate=1e-3, n_steps=n_steps,
+    model = PPO('MlpPolicy', env, learning_rate=5e-4, n_steps=n_steps,
                 batch_size=batch_size, verbose=1, n_epochs=10, policy_kwargs=policy_kwargs,  tensorboard_log=log_path)
     print(model.policy)
     model.set_logger(new_logger)

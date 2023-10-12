@@ -52,8 +52,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         # Max motor speed in radians per sec
         self.max_speed = 2*np.pi
 
-        # self.num_obs = np.random.randint(5, 10)
-        self.num_obs = 0
+        self.num_obs = np.random.randint(6, 12)
         # Define action space -> These will scale the max steer and max speed linearly
         self.action_space = gym.spaces.Box(
             low=-1.0, high=1.0, shape=(2,), dtype=np.float64)
@@ -67,7 +66,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         # Velocity of vehicle
         # Then we have the x,y poisition of the obstacles with the obstacle radius
         self.observation_space = gym.spaces.Box(
-            low=-20, high=20, shape=(5 + self.num_obs*3,), dtype=np.float64)
+            low=0, high=256, shape=(640*320*3,), dtype=np.float64)
 
         # -----------------------------
         # Chrono simulation parameters
@@ -89,8 +88,8 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self._steps_per_control = round(
             1 / (self._step_size * self._control_frequency))
         self._collision = False
-        self._terrain_length = 20
-        self._terrain_width = 20
+        self._terrain_length = 25
+        self._terrain_width = 5
         self._terrain_height = 2
         self.vehicle_pos = None
 
@@ -102,8 +101,6 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         # Holds reward of the episode
         self.reward = 0
         self._debug_reward = 0
-        # Position of goal as numpy array
-        self.goal = None
         # Distance to goal at previos time step -> To gauge "progress"
         self._vector_to_goal = None
         self._old_distance = None
@@ -116,6 +113,11 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         # Flag to check if the render setup has been done -> Some problem if rendering is setup in reset
         self._render_setup = False
 
+        # Process exploration reward
+        self.grid_resolution = 0.25
+        grid_size = (int(self._terrain_length/self.grid_resolution)+1, int(self._terrain_width/self.grid_resolution)+1)
+        self.grid = np.zeros(grid_size, dtype=int)
+        
     def reset(self, seed=None, options=None):
         """
         Reset the environment to its initial state -> Set up for standard gym API
@@ -148,7 +150,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         room_trimesh_shape.SetMutable(False)
         
         room_mesh_body = chrono.ChBody()
-        room_mesh_body.SetPos(chrono.ChVectorD(-2, -2, -0.1))
+        room_mesh_body.SetPos(chrono.ChVectorD(0, 0, -0.1))
         room_mesh_body.AddVisualShape(room_trimesh_shape)
         room_mesh_body.SetBodyFixed(True)
         room_mesh_body.GetCollisionModel().ClearModel()
@@ -181,18 +183,12 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         # -----------------------------
         self.add_sensors()
 
-        # ---------------------------------------
-        # Set the goal point and set premilinaries
-        # ---------------------------------------
-        self.set_goalPoint(seed=1)
-
         # -----------------------------
         # Get the intial observation
         # -----------------------------
         self.observation = self.get_observation()
         # self._old_distance = np.linalg.norm(self.observation[:3] - self.goal)
         # _vector_to_goal is a chrono vector
-        self._old_distance = self._vector_to_goal.Length()
         self._debug_reward = 0
 
         self._terminated = False
@@ -211,10 +207,15 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self.driver.SetSteering(steer_angle)  # Maybe we should ramp this steer
         # Wheel speed is ramped up to wheel_speed with a ramp time of 1/control_frequency
         self.driver.SetMotorSpeed(wheel_speed)
+        
+        grid_x_cur = self.rover.GetChassis().GetPos().x/self.grid_resolution
+        grid_y_cur = self.rover.GetChassis().GetPos().y/self.grid_resolution
+        self.grid[int(grid_x_cur), int(grid_y_cur)] = 1
 
         for i in range(self._steps_per_control):
             self.rover.Update()
             self.system.DoStepDynamics(self._step_size)
+            self.vehicle_pos = self.rover.GetChassis().GetPos()
             self._sens_manager.Update()
             #print(self.rover.GetChassis().GetPos())
 
@@ -231,7 +232,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
 
         return self.observation, self.reward, self._terminated, self._truncated, {}
 
-    def render(self, mode='human'):
+    def render(self, mode):
         """
         Render the environment
         """
@@ -249,7 +250,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
                 self.vis.Initialize()
                 self.vis.AddSkyBox()
                 self.vis.AddCamera(chrono.ChVectorD(
-                    -1, 0, 0.5), chrono.ChVectorD(0, 0, 0))
+                    0.5, 2.0, 0.5), chrono.ChVectorD(5.0, 4.0, 0))
                 self.vis.AddTypicalLights()
                 self.vis.AddLightWithShadow(chrono.ChVectorD(
                     1.5, -2.5, 5.5), chrono.ChVectorD(0, 0, 0.5), 3, 4, 10, 40, 512)
@@ -258,15 +259,13 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             self.vis.BeginScene()
             self.vis.Render()
             self.vis.EndScene()
-            
-        if mode == 'rgb_array':
+        elif mode == 'rgb_array':
             camera_buffer_RGBA8 = self.cam.GetMostRecentRGBA8Buffer()
             if camera_buffer_RGBA8.HasData():
                 rgb = camera_buffer_RGBA8.GetRGBA8Data()[:, :, 0:3]
             else:
                 rgb = np.zeros((self.camera_height, self.camera_width, 3))
-            return rgb
-        
+            return rgb 
         else:
             raise NotImplementedError
 
@@ -274,20 +273,10 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         """
         Get the reward for the current step
         """
-        scale_pos = 200
-        scale_neg = 200
-        # Distance to goal
-        # distance = np.linalg.norm(self.observation[:3] - self.goal)
         
-        distance = self._vector_to_goal.Length()  # chrono vector
-        if (self._old_distance > distance):
-            reward = scale_pos * (self._old_distance - distance)
-        else:
-            reward = scale_neg * (self._old_distance - distance)
-
-        # Update the old distance
-        self._old_distance = distance
-
+        reward = np.sum(self.grid)
+        reward = reward + 0.0
+       
         return reward
 
     def _is_terminated(self):
@@ -295,17 +284,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         Check if the environment is terminated
         """
 
-        # If we are within a certain distance of the goal -> Terminate and give big reward
-        # if np.linalg.norm(self.observation[:3] - self.goal) < 0.4:
-        if np.linalg.norm(self._vector_to_goal.Length()) < 0.75:
-            print('--------------------------------------------------------------')
-            print('Goal Reached')
-            print('Initial position: ', self._initpos)
-            print('Goal position: ', self.goal)
-            print('--------------------------------------------------------------')
-            self.reward += 2500
-            self._debug_reward += self.reward
-            self._terminated = True
+        self._terminated = False
 
         # If we have exceeded the max time -> Terminate
         if self.system.GetChTime() > self._max_time:
@@ -316,7 +295,6 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             dist = self._vector_to_goal.Length()
             print('Final position of rover: ',
                   self.rover.GetChassis().GetPos())
-            print('Goal position: ', self.goal)
             print('Distance to goal: ', dist)
             # Penalize based on how far we are from the goal
             self.reward -= 100 * dist
@@ -337,20 +315,19 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             print('--------------------------------------------------------------')
             print('Crashed')
             print('Vehicle Postion: ', self.vehicle_pos)
-            print('Goal Position: ', self.goal)
+            print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
-            self.reward -= 400
+            self.reward -= 1000
             self._debug_reward += self.reward
             self._truncated = True
         # Vehicle should not fall off the terrain
-        elif ((abs(self.vehicle_pos.x) > (self._terrain_length / 2.0 - 0.5)) or (abs(
-                self.vehicle_pos.y) > (self._terrain_width / 2. - 0.5)) or (self.vehicle_pos.z < 0)):
+        elif (abs(self.vehicle_pos.x) < 1.0 or (abs(self.vehicle_pos.x) > self._terrain_length - 1.0) or (abs(self.vehicle_pos.y) < 1.0) or (abs(self.vehicle_pos.y) > self._terrain_width - 1.0)):
             print('--------------------------------------------------------------')
             print('Outside of terrain')
             print('Vehicle Position: ', self.vehicle_pos)
-            print('Goal Position: ', self.goal)
+            print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
-            self.reward -= 400
+            self.reward -= 1000
             self._debug_reward += self.reward
             self._truncated = True
 
@@ -358,7 +335,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         """
         Initialize the pose of the robot
         """
-        self._initpos = chrono.ChVectorD(0, -0.2, 0.2)
+        self._initpos = chrono.ChVectorD(1.5, 1.9, 0.2)
 
         # For now no randomness
         self.rover.Initialize(chrono.ChFrameD(
@@ -366,101 +343,19 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
 
         self.vehicle_pos = self._initpos
 
-    def set_goalPoint(self, seed=1):
-        """
-        Set the goal point for the rover
-        """
-        # np.random.seed(seed)
-
-        a = -8.
-        b = 8.
-
-        redo = True
-        while (redo):
-            if (self.num_obs == 0):
-                goal_pos = a + (b - a) * np.random.rand(2)
-                break
-            goal_pos = a + (b - a) * np.random.rand(2)
-            for i in range(self.num_obs):
-                if np.linalg.norm(np.array([self.x_obs[i], self.y_obs[i]]) - goal_pos) < 1:
-                    redo = True
-                    break
-                else:
-                    redo = False
-            # Check if the point is too close to initial position of the rover
-            if abs(goal_pos[0] - self._initpos.x) < 2:
-                redo = True
-            if abs(goal_pos[1] - self._initpos.y) < 2:
-                redo = True
-
-        # Some random goal point for now
-        self.goal = np.array([goal_pos[0], goal_pos[1], 0.08144073])
-        # print('Goal: ', self.goal)
-
-        # -----------------------------
-        # Set up goal visualization
-        # -----------------------------
-        goal_contact_material = chrono.ChMaterialSurfaceNSC()
-        goal_mat = chrono.ChVisualMaterial()
-        goal_mat.SetAmbientColor(chrono.ChColor(1., 0., 0.))
-        goal_mat.SetDiffuseColor(chrono.ChColor(1., 0., 0.))
-
-        goal_body = chrono.ChBodyEasySphere(
-            0.2, 1000, True, False, goal_contact_material)
-
-        goal_body.SetPos(chrono.ChVectorD(
-            goal_pos[0], goal_pos[1], 0.2))
-        goal_body.SetBodyFixed(True)
-        goal_body.GetVisualShape(0).SetMaterial(0, goal_mat)
-
-        self.system.Add(goal_body)
 
     def get_observation(self):
         """
         Get the observation from the environment
         """
-        observation = np.zeros(5 + self.num_obs*3)
-
-        self.vehicle_pos = self.rover.GetChassis().GetPos()
-        self._vector_to_goal = npArray_to_chVector(
-            self.goal) - self.vehicle_pos
-        vector_to_goal_local = self.rover.GetChassis(
-        ).GetRot().RotateBack(self._vector_to_goal)
-
-        # Observation features
-        vehicle_heading = self.rover.GetChassis().GetRot().Q_to_Euler123().z
-        vehicle_velocity = self.rover.GetChassisVel()
-        local_delX = vector_to_goal_local.x * \
-            np.cos(vehicle_heading) + vector_to_goal_local.y * \
-            np.sin(vehicle_heading)
-        local_delY = -vector_to_goal_local.x * \
-            np.sin(vehicle_heading) + vector_to_goal_local.y * \
-            np.cos(vehicle_heading)
-        target_heading_to_goal = np.arctan2(
-            vector_to_goal_local.y, vector_to_goal_local.x)
-
-        observation[0] = local_delX
-        observation[1] = local_delY
-        observation[2] = vehicle_heading
-        observation[3] = target_heading_to_goal
-        observation[4] = vehicle_velocity.Length()
-
-        count = 0
-        spaces_filled = 5
-        for i in range(spaces_filled, self.num_obs*3+spaces_filled, 3):
-            obstacle_pos = chrono.ChVectorD(
-                self.x_obs[count], self.y_obs[count], 0.5)
-            rel_obstacle_pos_local = self.rover.GetChassis().GetRot(
-            ).RotateBack(obstacle_pos - self.vehicle_pos)
-
-            # observation[i] = self.x_obs[count]
-            # observation[i + 1] = self.y_obs[count]
-            # observation[i + 2] = 1
-            observation[i] = rel_obstacle_pos_local.x
-            observation[i + 1] = rel_obstacle_pos_local.y
-            observation[i + 2] = 1
-            count += 1
-
+        camera_buffer_RGBA8 = self.cam.GetMostRecentRGBA8Buffer()
+        rgb_data = None
+        if camera_buffer_RGBA8.HasData():
+            rgb_data = camera_buffer_RGBA8.GetRGBA8Data()[:, :, 0:3]
+        else:
+            rgb_data = np.zeros((self.camera_height, self.camera_width, 3))
+            
+        observation = rgb_data.flatten()
         # For not just the priveledged position of the rover
         return observation
 
@@ -474,34 +369,70 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
 
         self.x_obs = np.zeros(self.num_obs)
         self.y_obs = np.zeros(self.num_obs)
-        # Generate a random float between -8 and 8
+        self.z_rot = np.zeros(self.num_obs)
+        self.radius = np.zeros(self.num_obs)
+        self.object_index = np.zeros(self.num_obs)
+        self.object_radius = np.zeros(self.num_obs)
+        
+        # Generate a random float 
         for i in range(self.num_obs):
-            a = -8
-            b = 8
-            x = a + (b - a) * np.random.rand()
-            y = a + (b - a) * np.random.rand()
-            while abs(x - self._initpos.x) < 2:
-                x = a + (b - a) * np.random.rand()
-            while abs(y - self._initpos.y) < 2:
-                y = a + (b - a) * np.random.rand()
-            self.x_obs[i] = x
-            self.y_obs[i] = y
+            self.object_index[i] = np.random.randint(1, 3)
+            
+            if self.object_index[i] == 1:
+                self.object_radius[i] = 0.25
+            elif self.object_index[i] == 2:
+                self.object_radius[i] = 0.4
+                
+            invalid = True
+            while(invalid):
+                x = 1.0 + ((self._terrain_length-2.0) - 0) * np.random.rand()
+                y = 1.0 + ((self._terrain_width-2.0) - 0) * np.random.rand()
+                if abs(x - self._initpos.x) > 1.0 or abs(y - self._initpos.y) > 1.0:
+                    invalid = False
+                for j in range(i):
+                    if abs(x - self.x_obs[j]) < (self.object_radius[i] + self.object_radius[j]) and abs(y - self.y_obs[j]) < (self.object_radius[i] + self.object_radius[j]):
+                        invalid = True
+                        break
+                    
+                if invalid == False:
+                    self.x_obs[i] = x
+                    self.y_obs[i] = y
+                    rot = 2 * np.pi * np.random.rand()
+                    self.z_rot[i] = rot
+
+            
 
         # Add obstacles to the environment
         for i in range(self.num_obs):
-            obstacle_mat = chrono.ChMaterialSurfaceNSC()
-            obstacle = chrono.ChBodyEasyCylinder(chrono.ChAxis_Z,
-                                                 1.0, 1.0,  # radius, height
-                                                 100,       # density
-                                                 True,      # visualization?
-                                                 False,      # collision?
-                                                 obstacle_mat)   # contact material(
-            obstacle.SetPos(chrono.ChVectorD(
-                self.x_obs[i], self.y_obs[i], 0.5))
-            obstacle.SetBodyFixed(True)
-            obstacle.GetVisualShape(0).SetTexture(
-                chrono.GetChronoDataFile('textures/concrete.jpg'), 200, 200)
-            self.system.Add(obstacle)
+            # Generate index for random object
+            
+            mmesh_string = ""
+            mmesh_radius = 0.0
+            
+            current_directory = os.getcwd()
+            
+            if(self.object_index[i] == 1):
+                mmesh_string = current_directory+"/../envs/data/environment/obs/chair_1/swivel_chair_.obj"
+            elif(self.object_index[i] == 2):
+                mmesh_string = current_directory+"/../envs/data/environment/obs/scan_chair_1/textured.obj"
+
+            
+            self.radius[i] = self.object_radius[i]
+            obstacle_mmesh = chrono.ChTriangleMeshConnected()
+            obstacle_mmesh.LoadWavefrontMesh(mmesh_string, False, True)
+    
+            obstacle_trimesh_shape = chrono.ChTriangleMeshShape()
+            obstacle_trimesh_shape.SetMesh(obstacle_mmesh)
+            obstacle_trimesh_shape.SetName("obstacle")
+            obstacle_trimesh_shape.SetMutable(False)
+            
+            obstacle_mesh_body = chrono.ChBody()
+            obstacle_mesh_body.SetPos(chrono.ChVectorD(self.x_obs[i], self.y_obs[i], 0.0))
+            obstacle_mesh_body.SetRot(chrono.Q_from_AngAxis(self.z_rot[i], chrono.ChVectorD(0, 0, 1)))
+            obstacle_mesh_body.AddVisualShape(obstacle_trimesh_shape)
+            obstacle_mesh_body.SetBodyFixed(True)
+
+            self.system.Add(obstacle_mesh_body)
 
     # ------------------------------------- TODO: Add Sensors if necessary -------------------------------------
 
@@ -515,23 +446,21 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         cam_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.18, 0, 0.35),
                                     chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
 
-        self.camera_width = 1280
-        self.camera_height = 720
-        self.cam = sens.ChCameraSensor(self.rover.GetChassis().GetBody(), 30, cam_offset_pose, 1280,  720, 1.408,2)
-        self.cam.PushFilter(sens.ChFilterVisualize(1280, 720))
-        self.cam.PushFilter(sens.ChFilterRGBA8Access())
-        self._sens_manager.AddSensor(self.cam)
-        print("added_sen")
+        self.camera_width = 640
+        self.camera_height = 320
+        self.cam = sens.ChCameraSensor(self.rover.GetChassis().GetBody(), 30, cam_offset_pose, 640,  320, 1.408, 2)
         
-        lidar_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.0, 0, 0.4),
-                              chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
-        lidar = sens.ChLidarSensor(self.rover.GetChassis().GetBody(), 5., lidar_offset_pose, 90, 300,
-                            2*chrono.CH_C_PI, chrono.CH_C_PI / 12, -chrono.CH_C_PI / 6, 100., 0)
-        lidar.PushFilter(sens.ChFilterDIAccess())
-        lidar.PushFilter(sens.ChFilterPCfromDepth())
-        lidar.PushFilter(sens.ChFilterXYZIAccess())
-        lidar.PushFilter(sens.ChFilterVisualizePointCloud(1280, 720, 1))
-        self._sens_manager.AddSensor(lidar)
+        self.cam.PushFilter(sens.ChFilterRGBA8Access())
+        self.cam.SetName("CameraSensor")
+        self._sens_manager.AddSensor(self.cam)
+        
+        light_pos_1 = chrono.ChVectorD(4.0,2.0,1.85)
+        intensity = 1.0
+        self._sens_manager.scene.AddPointLight(chrono.ChVectorF(light_pos_1.x,light_pos_1.y,light_pos_1.z), chrono.ChColor(intensity, intensity, intensity), 500.0)
+
+        light_pos_2 = chrono.ChVectorD(12.0,2.0,1.85)
+        intensity = 1.0
+        self._sens_manager.scene.AddPointLight(chrono.ChVectorF(light_pos_2.x,light_pos_2.y,light_pos_2.z), chrono.ChColor(intensity, intensity, intensity), 500.0)
         
 
     # ------------ Check for collision with objects -------------------------------------
@@ -542,7 +471,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         collide = False
         cur_pos = self.rover.GetChassis().GetPos()
         for i in range(self.num_obs):
-            if abs(cur_pos.x - self.x_obs[i]) < 1 and abs(cur_pos.y - self.y_obs[i]) < 1:
+            if abs(cur_pos.x - self.x_obs[i]) < 0.5+self.object_radius[i] and abs(cur_pos.y - self.y_obs[i]) < 0.5+self.object_radius[i]:
                 collide = True
                 break
 

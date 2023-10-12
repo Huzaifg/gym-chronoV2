@@ -15,7 +15,7 @@ if __name__ == '__main__':
     check_env(env)
 
     obs, _ = env.reset()
-    env.render()
+    env.render(mode='rgb_array')
 
     print(env.observation_space)
     print(env.action_space)
@@ -27,10 +27,10 @@ if __name__ == '__main__':
         print(f"Step {step + 1}")
         # obs, reward, terminated, truncated, info = env.step(
         #     env.action_space.sample())
-        obs, reward, terminated, truncated, info = env.step([0, 0.3])
+        obs, reward, terminated, truncated, info = env.step([0.4, 0.3])
         done = terminated or truncated
         print("obs=", obs, "reward=", reward, "done=", done)
-        env.render()
+        env.render(mode='rgb_array')
         if done:
-            print("Goal reached!", "reward=", reward)
+            print("reward=", reward)
             break
