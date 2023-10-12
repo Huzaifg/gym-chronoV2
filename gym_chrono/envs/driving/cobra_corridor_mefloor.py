@@ -1,6 +1,7 @@
 # Chrono imports
 import pychrono as chrono
 import pychrono.robot as robot_chrono
+import cv2
 import cmath
 try:
     from pychrono import irrlicht as chronoirr
@@ -57,16 +58,6 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self.action_space = gym.spaces.Box(
             low=-1.0, high=1.0, shape=(2,), dtype=np.float64)
 
-        # Define observation space
-        # First few elements describe the relative position of the rover to the goal
-        # Delta x in local frame
-        # Delta y in local frame
-        # Vehicle heading
-        # Heading needed to reach the goal
-        # Velocity of vehicle
-        # Then we have the x,y poisition of the obstacles with the obstacle radius
-        self.observation_space = gym.spaces.Box(
-            low=0, high=256, shape=(640*320*3,), dtype=np.float64)
 
         # -----------------------------
         # Chrono simulation parameters
@@ -92,6 +83,11 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self._terrain_width = 5
         self._terrain_height = 2
         self.vehicle_pos = None
+        
+        self.camera_width = 640
+        self.camera_height = 320
+        self.observation_space = gym.spaces.Box(
+            low=0, high=255, shape=(3,640,320), dtype=np.float64)
 
         # ---------------------------------
         # Gym Environment variables
@@ -119,6 +115,15 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self.grid = np.zeros(grid_size, dtype=int)
         
     def reset(self, seed=None, options=None):
+        self._sens_manager = None
+        self.cam = None
+        self.x_obs =  None
+        self.y_obs = None
+        self.z_rot = None
+        self.radius = None
+        self.object_index = None
+        self.object_radius = None
+        
         """
         Reset the environment to its initial state -> Set up for standard gym API
         :param seed: Seed for the random number generator
@@ -264,7 +269,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             if camera_buffer_RGBA8.HasData():
                 rgb = camera_buffer_RGBA8.GetRGBA8Data()[:, :, 0:3]
             else:
-                rgb = np.zeros((self.camera_height, self.camera_width, 3))
+                rgb = np.zeros((self.camera_width, self.camera_height, 3))
             return rgb 
         else:
             raise NotImplementedError
@@ -291,14 +296,6 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             print('--------------------------------------------------------------')
             print('Time out')
             print('Initial position: ', self._initpos)
-            # dist = np.linalg.norm(self.observation[:3] - self.goal)
-            dist = self._vector_to_goal.Length()
-            print('Final position of rover: ',
-                  self.rover.GetChassis().GetPos())
-            print('Distance to goal: ', dist)
-            # Penalize based on how far we are from the goal
-            self.reward -= 100 * dist
-
             self._debug_reward += self.reward
             print('Reward: ', self.reward)
             print('Accumulated Reward: ', self._debug_reward)
@@ -317,7 +314,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             print('Vehicle Postion: ', self.vehicle_pos)
             print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
-            self.reward -= 1000
+            self.reward -= 1500
             self._debug_reward += self.reward
             self._truncated = True
         # Vehicle should not fall off the terrain
@@ -327,7 +324,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             print('Vehicle Position: ', self.vehicle_pos)
             print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
-            self.reward -= 1000
+            self.reward -= 1500
             self._debug_reward += self.reward
             self._truncated = True
 
@@ -352,12 +349,12 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         rgb_data = None
         if camera_buffer_RGBA8.HasData():
             rgb_data = camera_buffer_RGBA8.GetRGBA8Data()[:, :, 0:3]
+            rgb_data = np.transpose(rgb_data, (2, 1, 0))
         else:
-            rgb_data = np.zeros((self.camera_height, self.camera_width, 3))
-            
-        observation = rgb_data.flatten()
+            rgb_data = np.zeros((3, self.camera_width, self.camera_height)) 
+        
         # For not just the priveledged position of the rover
-        return observation
+        return rgb_data
 
     # -------------Add Random Objects to the environment -------------------------------------
 
@@ -446,8 +443,6 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         cam_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.18, 0, 0.35),
                                     chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
 
-        self.camera_width = 640
-        self.camera_height = 320
         self.cam = sens.ChCameraSensor(self.rover.GetChassis().GetBody(), 30, cam_offset_pose, 640,  320, 1.408, 2)
         
         self.cam.PushFilter(sens.ChFilterRGBA8Access())
