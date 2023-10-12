@@ -11,19 +11,20 @@ import os
 env = cobra_corridor()
 
 
-loaded_model = PPO.load("PPO_cobra")
+# loaded_model = PPO.load("PPO_cobra")
 
-# i = 50
-# checkpoint_dir = 'ppo_checkpoints'
+i = 72
+# checkpoint_dir = 'cobra_noObstacles_10_09'
+checkpoint_dir = 'ppo_checkpoints'
 
-# loaded_model = PPO.load(os.path.join(
-#     checkpoint_dir, f"ppo_checkpoint{i}"), env)
+loaded_model = PPO.load(os.path.join(
+    checkpoint_dir, f"ppo_checkpoint{i}"), env)
 
 # mean_reward, std_reward = evaluate_policy(
 #     loaded_model, env, n_eval_episodes=5)
 # print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
 
-sim_time = 65
+sim_time = 50
 timeStep = 0.1
 
 totalSteps = int(sim_time / timeStep)

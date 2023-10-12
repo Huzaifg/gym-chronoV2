@@ -52,7 +52,7 @@ class cobra_corridor(ChronoBaseEnv):
         self.max_speed = 2*np.pi
 
         # self.num_obs = np.random.randint(5, 10)
-        self.num_obs = 0
+        self.num_obs = 3
         # Define action space -> These will scale the max steer and max speed linearly
         self.action_space = gym.spaces.Box(
             low=-1.0, high=1.0, shape=(2,), dtype=np.float64)
@@ -114,6 +114,8 @@ class cobra_corridor(ChronoBaseEnv):
         self._truncated = False
         # Flag to check if the render setup has been done -> Some problem if rendering is setup in reset
         self._render_setup = False
+        # Flag to count success while testing
+        self._success = False
 
     def reset(self, seed=None, options=None):
         """
@@ -181,6 +183,7 @@ class cobra_corridor(ChronoBaseEnv):
 
         self._terminated = False
         self._truncated = False
+        self._success = False
 
         return self.observation, {}
 
@@ -276,6 +279,7 @@ class cobra_corridor(ChronoBaseEnv):
             self.reward += 2500
             self._debug_reward += self.reward
             self._terminated = True
+            self._success = True
 
         # If we have exceeded the max time -> Terminate
         if self.system.GetChTime() > self._max_time:

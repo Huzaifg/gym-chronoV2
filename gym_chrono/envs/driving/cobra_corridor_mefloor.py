@@ -144,22 +144,25 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         ground_mat = chrono.ChMaterialSurfaceNSC()
         room_mmesh = chrono.ChTriangleMeshConnected()
         current_directory = os.getcwd()
-        room_mmesh.LoadWavefrontMesh(current_directory+"/../envs/data/environment/hallway.obj", False, True)
-        
+        room_mmesh.LoadWavefrontMesh(
+            current_directory+"/../envs/data/environment/hallway.obj", False, True)
+
         room_contact_mesh = chrono.ChTriangleMeshConnected()
-        room_contact_mesh.LoadWavefrontMesh(current_directory+"/../envs/data/environment/hallway.obj", False, True)
-        
+        room_contact_mesh.LoadWavefrontMesh(
+            current_directory+"/../envs/data/environment/hallway.obj", False, True)
+
         room_trimesh_shape = chrono.ChTriangleMeshShape()
         room_trimesh_shape.SetMesh(room_mmesh)
         room_trimesh_shape.SetName("Hallway Mesh")
         room_trimesh_shape.SetMutable(False)
-        
+
         room_mesh_body = chrono.ChBody()
         room_mesh_body.SetPos(chrono.ChVectorD(0, 0, -0.1))
         room_mesh_body.AddVisualShape(room_trimesh_shape)
         room_mesh_body.SetBodyFixed(True)
         room_mesh_body.GetCollisionModel().ClearModel()
-        room_mesh_body.GetCollisionModel().AddTriangleMesh(ground_mat, room_contact_mesh, True, True)
+        room_mesh_body.GetCollisionModel().AddTriangleMesh(
+            ground_mat, room_contact_mesh, True, True)
         room_mesh_body.GetCollisionModel().BuildModel()
         room_mesh_body.SetCollide(True)
 
@@ -222,15 +225,15 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             self.system.DoStepDynamics(self._step_size)
             self.vehicle_pos = self.rover.GetChassis().GetPos()
             self._sens_manager.Update()
-            #print(self.rover.GetChassis().GetPos())
+            # print(self.rover.GetChassis().GetPos())
 
         # Get the observation
         self.observation = self.get_observation()
-        
+
         # Get reward
         self.reward = self.get_reward()
         self._debug_reward += self.reward
-        
+
         # Check if we are done
         self._is_terminated()
         self._is_truncated()
@@ -264,13 +267,16 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
             self.vis.BeginScene()
             self.vis.Render()
             self.vis.EndScene()
+
         elif mode == 'rgb_array':
             camera_buffer_RGBA8 = self.cam.GetMostRecentRGBA8Buffer()
+            rgb_data = None
             if camera_buffer_RGBA8.HasData():
                 rgb = camera_buffer_RGBA8.GetRGBA8Data()[:, :, 0:3]
             else:
                 rgb = np.zeros((self.camera_width, self.camera_height, 3))
             return rgb 
+
         else:
             raise NotImplementedError
 
@@ -281,7 +287,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         
         reward = np.sum(self.grid)
         reward = reward + 0.0
-       
+
         return reward
 
     def _is_terminated(self):
@@ -437,11 +443,11 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         """
         Add sensors to the rover
         """
-        
+
         self._sens_manager = sens.ChSensorManager(self.system)
 
         cam_offset_pose = chrono.ChFrameD(chrono.ChVectorD(0.18, 0, 0.35),
-                                    chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
+                                          chrono.Q_from_AngAxis(0, chrono.ChVectorD(0, 1, 0)))
 
         self.cam = sens.ChCameraSensor(self.rover.GetChassis().GetBody(), 30, cam_offset_pose, 640,  320, 1.408, 2)
         
@@ -459,6 +465,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         
 
     # ------------ Check for collision with objects -------------------------------------
+
     def check_collision(self):
         """
         Check if we collide with any of the objects
