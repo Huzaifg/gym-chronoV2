@@ -258,6 +258,10 @@ class cobra_corridor(ChronoBaseEnv):
         else:
             reward = scale_neg * (self._old_distance - distance)
 
+        # If we have not moved even by 1 cm in 0.1 seconds, give penalty
+        if (np.abs(self._old_distance - distance) < 0.01):
+            reward -= 10
+
         # Update the old distance
         self._old_distance = distance
 
@@ -313,7 +317,7 @@ class cobra_corridor(ChronoBaseEnv):
             print('Vehicle Postion: ', self.vehicle_pos)
             print('Goal Position: ', self.goal)
             print('--------------------------------------------------------------')
-            self.reward -= 400
+            self.reward -= 600
             self._debug_reward += self.reward
             self._truncated = True
         # Vehicle should not fall off the terrain
@@ -324,7 +328,7 @@ class cobra_corridor(ChronoBaseEnv):
             print('Vehicle Position: ', self.vehicle_pos)
             print('Goal Position: ', self.goal)
             print('--------------------------------------------------------------')
-            self.reward -= 400
+            self.reward -= 600
             self._debug_reward += self.reward
             self._truncated = True
 
