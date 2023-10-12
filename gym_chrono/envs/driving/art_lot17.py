@@ -20,7 +20,7 @@ except:
 # Gym chrono imports
 # Custom imports
 from gym_chrono.envs.ChronoBase import ChronoBaseEnv
-from gym_chrono.envs.utils.utils import CalcInitialPose, chVector_to_npArray, npArray_to_chVector, SetChronoDataDirectories
+from gym_chrono.envs.utils.utils import CalcInitialPose, chVector_to_npArray, npArray_to_chVector, SetChronoDataDirectories, graph
 
 # Standard Python imports
 import os
@@ -36,14 +36,14 @@ class art_lot17(ChronoBaseEnv):
     Gym environment for the ART vehicle Chrono simulation to reach a point in the lot 17 parking lot
     """
 
-    def __init__(self, render_mode='human'):
+    def __init__(self, render_mode=None):
         ChronoBaseEnv.__init__(self, render_mode)
 
         SetChronoDataDirectories()
 
         # Action space is the throttle and steering - Throttle is between 0 and 1, steering is -1 to 1
         self.action_space = gym.spaces.Box(
-            low=[-1.0, 0], high=[1.0, 1.0], shape=(2,), dtype=np.float64)
+            low=np.array([-1.0, 0]), high=np.array([1.0, 1.0]), shape=(2,), dtype=np.float64)
 
         # Define observation space
         # First few elements describe the relative position of the rover to the goal
@@ -84,6 +84,9 @@ class art_lot17(ChronoBaseEnv):
 
         self.sensor_manager = None
         self._have_gps = False  # Flag to check if GPS sensor is present
+        self.gps = None  # GPS if needed is added in add_sensors
+        # Need this graph to move from GPS to cartesian as the Chrono function is broken
+        self.gps_graph = None
         self._have_imu = False  # Flag to check if IMU sensor is present
         self.gps_origin = None  # GPS origin in lat, long, alt
         self.goal_gps = None  # Goal in GPS frame
@@ -139,7 +142,7 @@ class art_lot17(ChronoBaseEnv):
         # Contact mand collision properties
         # -----------------------------
         contact_method = chrono.ChContactMethod_SMC
-        self.vehicle.SetContactMethod(chrono.ChContactMethod_SMC)
+        self.vehicle.SetContactMethod(contact_method)
         self.vehicle.SetChassisCollisionType(False)  # No collision for now
 
         # ---------------------------------
@@ -153,7 +156,7 @@ class art_lot17(ChronoBaseEnv):
         self.vehicle.SetChassisFixed(False)
         self.vehicle.SetTireType(veh.TireModelType_TMEASY)
         self.vehicle.SetTireStepSize(self._step_size)
-        self.vehicle.SetMaxMotorVoltageRatio(0.16)
+        self.vehicle.SetMaxMotorVoltageRatio(0.08)
         self.vehicle.SetStallTorque(0.3)
         self.vehicle.SetTireRollingResistance(0.06)
         self.vehicle.Initialize()
@@ -194,7 +197,7 @@ class art_lot17(ChronoBaseEnv):
         # patch = self.terrain.AddPatch(patch_mat, chrono.ChVectorD(-self.terrain_length/2, -self.terrain_width/2, 0), chrono.ChVectorD(
         #     0, 0, 1), self.terrain_length, self.terrain_width, self.terrain_thickness)
         patch = self.terrain.AddPatch(
-            patch_mat, chrono.CSYSNORM, self.terrain_length, self.terrain_width)
+            patch_mat, chrono.CSYSNORM, self._terrain_length, self._terrain_width)
         patch.SetTexture(self.chronopath +
                          'textures/concrete.jpg', 200, 200)
         patch.SetColor(chrono.ChColor(0.8, 0.8, 0.5))
@@ -236,15 +239,191 @@ class art_lot17(ChronoBaseEnv):
         # Get the initial observation
         # ---------------------------
         self.observation = self.get_observation()
-        self._old_distance = self._vector_to_goal.Length() # To track progress
+        self._old_distance = self._vector_to_goal.Length()  # To track progress
 
         self._debug_reward = 0
-
+        self._render_setup = False
         self._terminated = False
         self._truncated = False
-        self._success = False # During testing phase to see number of successes
+        self._success = False  # During testing phase to see number of successes
 
         return self.observation, {}
+
+    def step(self, action):
+        """
+        ART takes a step in the environment - Frequency by default is 10 Hz
+        """
+        steering = action[0]
+        throttle = action[1]
+
+        for i in range(self._steps_per_control):
+            time = self.system.GetChTime()
+            self.driver_inputs.m_steering = np.clip(steering, self.driver_inputs.m_steering - self.SteeringDelta,
+                                                    self.driver_inputs.m_steering + self.SteeringDelta)
+            self.driver_inputs.m_throttle = np.clip(throttle, self.driver_inputs.m_throttle - self.ThrottleDelta,
+                                                    self.driver_inputs.m_throttle + self.ThrottleDelta)
+            self.driver_inputs.m_braking = 0.0  # No braking for now
+
+            self.vehicle.Synchronize(time, self.driver_inputs, self.terrain)
+            self.terrain.Synchronize(time)
+
+            # Advance the vehicle
+            self.driver.Advance(self._step_size)
+            self.vehicle.Advance(self._step_size)
+            self.terrain.Advance(self._step_size)
+
+            # Sensor update
+            self.sensor_manager.Update()
+
+        self.observation = self.get_observation()
+        self.reward = self.get_reward()
+        self._debug_reward += self.reward
+
+        # Check if we hit something or reached the goal
+        self._is_terminated()
+        self._is_truncated()
+
+        return self.observation, self.reward, self._terminated, self._truncated, {}
+
+    def render(self, mode='human'):
+        """
+        Render the environment
+        """
+
+        # ------------------------------------------------------
+        # Add visualization - only if we want to see "human" POV
+        # ------------------------------------------------------
+        if mode == 'human':
+            if self._render_setup == False:
+                self.vis = chronoirr.ChVisualSystemIrrlicht()
+                self.vis.AttachSystem(self.system)
+                self.vis.SetCameraVertical(chrono.CameraVerticalDir_Z)
+                self.vis.SetWindowSize(1280, 720)
+                self.vis.SetWindowTitle('ART lot17 RL playground')
+                self.vis.Initialize()
+                self.vis.AddSkyBox()
+                self.vis.AddCamera(chrono.ChVectorD(
+                    0, 0, 30), chrono.ChVectorD(0, 0, 1))
+                self.vis.AddTypicalLights()
+                self.vis.AddLightWithShadow(chrono.ChVectorD(
+                    1.5, -2.5, 5.5), chrono.ChVectorD(0, 0, 0.5), 3, 4, 10, 40, 512)
+                self._render_setup = True
+
+            self.vis.BeginScene()
+            self.vis.Render()
+            self.vis.EndScene()
+        elif mode == 'follow':
+            if self._render_setup == False:
+                self.vis = veh.ChWheeledVehicleVisualSystemIrrlicht()
+                self.vis.SetWindowTitle('ART')
+                self.vis.SetWindowSize(1280, 1024)
+                trackPoint = chrono.ChVectorD(0.0, 0.0, 1.75)
+                self.vis.SetChaseCamera(trackPoint, 6.0, 0.5)
+                self.vis.Initialize()
+                self.vis.AddLightDirectional()
+                self.vis.AddSkyBox()
+                self.vis.AttachVehicle(self.vehicle.GetVehicle())
+                self._render_setup = True
+
+            self.vis.BeginScene()
+            self.vis.Render()
+            self.vis.EndScene()
+        else:
+            raise NotImplementedError
+
+    def get_reward(self):
+        """
+        Get the reward for the current step. Reward  = 200 * progress_made.
+        Progress made is the difference between the distance to the goal in the previous step and the current step
+        progress made can be negative, in which case the reward is negative
+        A fixed -10 reward for moving by less than a centimeter in 0.1 seconds
+        :return: Reward for the current step
+        """
+        scale_pos = 200
+        scale_neg = 200
+        # Distance to goal
+        # distance = np.linalg.norm(self.observation[:3] - self.goal)
+        distance = self._vector_to_goal.Length()  # chrono vector
+        if (self._old_distance > distance):
+            reward = scale_pos * (self._old_distance - distance)
+        else:
+            reward = scale_neg * (self._old_distance - distance)
+
+        # If we have not moved even by 1 cm in 0.1 seconds, give penalty
+        if (np.abs(self._old_distance - distance) < 0.01):
+            reward -= 10
+
+        # Update the old distance
+        self._old_distance = distance
+
+        return reward
+
+    def _is_terminated(self):
+        """
+        Check if the environment is terminated
+        If ART within 2 m of the goal - terminal +2500 reward
+        If ART exceeded the max time - terminal -100 * distance to goal reward
+        """
+        # If we are within a certain distance of the goal -> Terminate and give big reward
+        # if np.linalg.norm(self.observation[:3] - self.goal) < 0.4:
+        if np.linalg.norm(self._vector_to_goal.Length()) < 2:
+            print('--------------------------------------------------------------')
+            print('Goal Reached')
+            print('Initial position: ', self._initpos)
+            print('Goal position: ', self.goal)
+            print('--------------------------------------------------------------')
+            self.reward += 2500
+            self._debug_reward += self.reward
+            self._terminated = True
+            self._success = True
+
+        # If we have exceeded the max time -> Terminate
+        if self.system.GetChTime() > self._max_time:
+            print('--------------------------------------------------------------')
+            print('Time out')
+            print('Initial position: ', self._initpos)
+            # dist = np.linalg.norm(self.observation[:3] - self.goal)
+            dist = self._vector_to_goal.Length()
+            print('Final position of rover: ',
+                  self.rover.GetChassis().GetPos())
+            print('Goal position: ', self.goal)
+            print('Distance to goal: ', dist)
+            # Penalize based on how far we are from the goal
+            self.reward -= 100 * dist
+
+            self._debug_reward += self.reward
+            print('Reward: ', self.reward)
+            print('Accumulated Reward: ', self._debug_reward)
+            print('--------------------------------------------------------------')
+            self._terminated = True
+
+    def _is_truncated(self):
+        """
+        Check if the episode is truncated due to collision with wall of falling off the terrain.
+        Both handled seperately as of now if we want to give different rewards
+        """
+        # Check if we are in contact with the wall
+
+        if (self._check_collision()):
+            print('--------------------------------------------------------------')
+            print('Collision')
+            print('Initial position: ', self._initpos)
+            print('Goal position: ', self.goal)
+            print('--------------------------------------------------------------')
+            self.reward -= 500
+            self._debug_reward += self.reward
+            self._truncated = True
+
+        # Check if we have fallen off the terrain
+        if (self._fallen_off_terrain()):
+            print('--------------------------------------------------------------')
+            print('Fallen off terrain')
+            print('Initial position: ', self._initpos)
+            print('Goal position: ', self.goal)
+            print('--------------------------------------------------------------')
+            self.reward -= 500
+            self._debug_reward += self.reward
+            self._truncated = True
 
     def get_observation(self):
         """
@@ -262,32 +441,34 @@ class art_lot17(ChronoBaseEnv):
                  5. Velocity of vehicle
         """
 
-        observation = np.zeroes(self._num_observations)
+        observation = np.zeros(self._num_observations)
 
         gps_buffer = self.gps.GetMostRecentGPSBuffer()
         cur_gps_data = None
         self.vehicle_pos = self.chassis_body.GetPos()
+        print("Vehicle position is: ", self.vehicle_pos)
         # Get the GPS data from the buffer
-        if self._have_gps 
+        if self._have_gps:
             if gps_buffer.HasData():
                 cur_gps_data = gps_buffer.GetGPSData()
                 cur_gps_data = chrono.ChVectorD(
                     cur_gps_data[1], cur_gps_data[0], cur_gps_data[2])
             else:
-                cur_gps_data = chrono.ChVectorD(self.origin)
+                cur_gps_data = chrono.ChVectorD(self.gps_origin)
             # Position of vehicle in cartesian coodinates from the GPS buffer
             sens.GPS2Cartesian(cur_gps_data, self.gps_origin)
-        else: # There is no gps, use previledged information
+        else:  # There is no gps, use previledged information
             cur_gps_data = self.vehicle_pos
-            
+
         # Goal is currently not read from the GPS sensor
         self._vector_to_goal = npArray_to_chVector(self.goal) - cur_gps_data
         vector_to_goal_local = self.chassis_body.GetRot().RotateBack(self._vector_to_goal)
+        self._vector_to_goal.z = 0  # Set this to zero to not effect reward calculation
 
-        ###### TODO: Use magnetometer here to get heading - need help from Nevindu/Harry
+        # TODO: Use magnetometer here to get heading - need help from Nevindu/Harry
         # For now using priveledged information
-        vehicle_heading = self.chassis_body.GetRot().Q_to_Euler123().z()
-        ###### TODO: Use state estimator used in reality in simulation as well to get velocity - need help from Stefan/Ishaan
+        vehicle_heading = self.chassis_body.GetRot().Q_to_Euler123().z
+        # TODO: Use state estimator used in reality in simulation as well to get velocity - need help from Stefan/Ishaan
         # For now using priveldeged information
         vehicle_velocity = self.chassis_body.GetPos_dt()
         local_delX = vector_to_goal_local.x * \
@@ -305,7 +486,6 @@ class art_lot17(ChronoBaseEnv):
         observation[3] = target_heading_to_goal
         observation[4] = vehicle_velocity.Length()
 
-
         return observation
 
     def initialize_vehicle_pos(self, seed=1):
@@ -314,11 +494,11 @@ class art_lot17(ChronoBaseEnv):
         """
         # Initialize vehicle at the left corner of the terrain
         # No randomness for now
-        self._initpos = chrono.ChVectorD(0, -0.2, 0.08144073)
-        self._initRot = chrono.ChQuaternionD(1, 0, 0, 0)
-
+        self._initpos = chrono.ChVectorD(-12.5, 30, 0.1)
+        self._initRot = chrono.ChQuaternionD(1., 0, 0, 0)
+        self._initRot.Q_from_AngZ(-math.pi/2)
         self.vehicle.SetInitPosition(
-            chrono.ChCoordsysD(self._initLoc, self._initRot))
+            chrono.ChCoordsysD(self._initpos, self._initRot))
 
         self.vehicle_pos = self._initpos
 
@@ -348,24 +528,29 @@ class art_lot17(ChronoBaseEnv):
 
         goal_boundary_y_max = self._terrain_width/2 - boundary_y_tolerance
 
-        vehicle_x_pos = self.vehicle_pos.x()
-        vehicle_y_pos = self.vehicle_pos.y()
+        vehicle_x_pos = self.vehicle_pos.x
+        vehicle_y_pos = self.vehicle_pos.y
 
-        self.goal = np.random.uniform(low=[-self._terrain_length/2, -self._terrain_width/2], high=[
-            self._terrain_length/2, self._terrain_width/2], size=(2,))
+        # Guess goal ensuring its within the boundaries
+        self.goal = np.random.uniform(low=[-goal_boundary_x_max, -goal_boundary_y_max], high=[
+            goal_boundary_x_max, goal_boundary_y_max], size=(2,))
 
-        goal_is_inside_wall = np.abs(self.goal[0]) < goal_wall_x_max and np.abs(
-            self.goal[1]) < goal_wall_y_max
-        goal_is_outside_boundary = np.abs(self.goal[0]) > goal_boundary_x_max and np.abs(
-            self.goal[1]) < goal_boundary_y_max
+        goal_is_inside_wall = (np.abs(self.goal[0]) < goal_wall_x_max) or (np.abs(
+            self.goal[1]) < goal_wall_y_max)
         goal_is_close_to_vehicle = (math.sqrt(
             (self.goal[0] - vehicle_x_pos)**2 + (self.goal[1] - vehicle_y_pos)**2) < 5)
 
-        while (goal_is_inside_wall or goal_is_outside_boundary or goal_is_close_to_vehicle):
+        while (goal_is_inside_wall or goal_is_close_to_vehicle):
             self.goal = np.random.uniform(low=[-self._terrain_length/2, -self._terrain_width/2], high=[
                 self._terrain_length/2, self._terrain_width/2], size=(2,))
 
-        self.goal = np.append(self.goal, 0.08144073)
+            goal_is_inside_wall = np.abs(self.goal[0]) < goal_wall_x_max and np.abs(
+                self.goal[1]) < goal_wall_y_max
+
+            goal_is_close_to_vehicle = (math.sqrt(
+                (self.goal[0] - vehicle_x_pos)**2 + (self.goal[1] - vehicle_y_pos)**2) < 5)
+
+        self.goal = np.append(self.goal, 0)
 
         print("Goal in cartesian frame is: ", self.goal)
 
@@ -381,18 +566,39 @@ class art_lot17(ChronoBaseEnv):
             0.2, 1000, True, False, goal_contact_material)
 
         goal_body.SetPos(chrono.ChVectorD(
-            goal_pos[0], goal_pos[1], 0.2))
+            self.goal[0], self.goal[1], 0.2))
         goal_body.SetBodyFixed(True)
         goal_body.GetVisualShape(0).SetMaterial(0, goal_mat)
 
         self.system.Add(goal_body)
 
-        # -----------------------------
-        # Goal in the GPS frame
-        # -----------------------------
-        if (self._have_gps):
-            self.goal_gps = npArray_to_chVector(self.goal)
-            sens.Cartesian2GPS(self.gps_origin, self.goal_gps)
+    def _check_collision(self):
+        """
+        Check if we collided against the inner wall 
+        Basically checks if the vehicle ground truth position is within the wall boundaries
+        Just checking CG for now - no bounding box and no actual collision
+        """
+        vehicle_is_inside_walls = abs(
+            self.vehicle_pos.x) < self._wall_box_length/2 or abs(self.vehicle_pos.y) < self._wall_box_width/2
+        if (vehicle_is_inside_walls):
+            return True
+        else:
+            return False
+
+    def _fallen_off_terrain(self):
+        """
+        Check if we have fallen off the terrain
+        For now just checks if the CG of the vehicle is within the rectangle bounds with some tolerance
+        """
+        terrain_length_tolerance = self._terrain_length/2 - 1.25
+        terrain_width_tolerance = self._terrain_width/2 - 2.5
+
+        vehicle_is_outside_terrain = abs(self.vehicle_pos.x) > terrain_length_tolerance or abs(
+            self.vehicle_pos.y) > terrain_width_tolerance
+        if (vehicle_is_outside_terrain):
+            return True
+        else:
+            return False
 
     def add_sensors(self):
         """
@@ -400,7 +606,7 @@ class art_lot17(ChronoBaseEnv):
         """
 
         self._initialize_sensor_manager()
-        self._add_gps_sensor(std=0.05)
+        self._add_gps_sensor(std=0.005)
         self._have_gps = True
         self._add_magnetometer_sensor(std=0)
         self._have_imu = True
@@ -411,7 +617,7 @@ class art_lot17(ChronoBaseEnv):
         """
         self.sensor_manager = sens.ChSensorManager(self.system)
         self.sensor_manager.scene.AddPointLight(
-            chrono.ChVectorF(0, 0, 100), chrono.ChVectorF(1, 1, 1), 5000)
+            chrono.ChVectorF(100, 100, 100), chrono.ChColor(1, 1, 1), 5000)
         b = sens.Background()
         b.color_horizon = chrono.ChVectorF(.6, .7, .8)
         b.color_zenith = chrono.ChVectorF(.4, .5, .6)
@@ -434,12 +640,12 @@ class art_lot17(ChronoBaseEnv):
         # The lat long and altitude of the cartesian origin - This needs to be measured
         self.gps_origin = chrono.ChVectorD(43.073268, -89.400636, 260.0)
 
-        gps = sens.ChGPSSensor(self.vehicle.GetChassisBody(), self._sensor_frequency,  # update rate
-                               gps_offset_pose, self.gps_origin, noise_model)
+        self.gps = sens.ChGPSSensor(self.vehicle.GetChassisBody(), self._sensor_frequency,  # update rate
+                                    gps_offset_pose, self.gps_origin, noise_model)
 
-        gps.SetName("GPS")
-        gps.PushFilter(sens.ChFilterGPSAccess())
-        self.sensor_manager.AddSensor(gps)
+        self.gps.SetName("GPS")
+        self.gps.PushFilter(sens.ChFilterGPSAccess())
+        self.sensor_manager.AddSensor(self.gps)
 
     def _add_magnetometer_sensor(self, std=0):
         """
@@ -456,7 +662,7 @@ class art_lot17(ChronoBaseEnv):
         mag.PushFilter(sens.ChFilterMagnetAccess())
         self.sensor_manager.AddSensor(mag)
 
-    def add_obstacles(seed):
+    def add_obstacles(self, seed):
         """
         Add obstacles to the environment
         """
