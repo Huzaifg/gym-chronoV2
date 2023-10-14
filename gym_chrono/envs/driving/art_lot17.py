@@ -52,7 +52,9 @@ class art_lot17(ChronoBaseEnv):
         # Vehicle heading
         # Heading needed to reach the goal
         # Velocity of vehicle
-        self._num_observations = 5
+        # GPS Position transformed to Cartesian - X axis
+        # GPS Position transformed to Cartesian - Y axis
+        self._num_observations = 7
         self.observation_space = gym.spaces.Box(
             low=-200, high=200, shape=(self._num_observations,), dtype=np.float64)
 
@@ -68,7 +70,7 @@ class art_lot17(ChronoBaseEnv):
 
         self.x_obs = None
         self.y_obs = None
-
+        self.render_mode = render_mode
         self._initpos = chrono.ChVectorD(
             0.0, 0.0, 0.0)  # ART initial position
 
@@ -95,15 +97,15 @@ class art_lot17(ChronoBaseEnv):
         # -----------------------------
         # Terrain helper variables
         # -----------------------------
-        self._terrain_length = 35
-        self._terrain_width = 70
+        self._terrain_length = 40
+        self._terrain_width = 80
         self._terrain_height = 2
         self._terrain_center = chrono.ChVectorD(0, 0, 0)
 
         # If the vehicle is in contact with the wall, that is a collision
         self._wall_center = chrono.ChVectorD(0, 0, 0)
-        self._wall_box_length = 15
-        self._wall_box_width = 50
+        self._wall_box_length = 20
+        self._wall_box_width = 60
 
         # ---------------------------------
         # Gym Environment variables
@@ -117,6 +119,7 @@ class art_lot17(ChronoBaseEnv):
         self.goal = None
         # Distance to goal at previos time step -> To gauge "progress"
         self._vector_to_goal = None
+        self._vector_to_goal_withoutNoise = None
         self._old_distance = None
         # Observation of the environment
         self.observation = None
@@ -158,7 +161,7 @@ class art_lot17(ChronoBaseEnv):
         self.vehicle.SetTireStepSize(self._step_size)
         self.vehicle.SetMaxMotorVoltageRatio(0.08)
         self.vehicle.SetStallTorque(0.3)
-        self.vehicle.SetTireRollingResistance(0.06)
+        self.vehicle.SetTireRollingResistance(0.015)
         self.vehicle.Initialize()
 
         # ------------------
@@ -194,13 +197,11 @@ class art_lot17(ChronoBaseEnv):
         patch_mat.SetYoungModulus(2e7)
 
         # Just a flat terrain for now
-        # patch = self.terrain.AddPatch(patch_mat, chrono.ChVectorD(-self.terrain_length/2, -self.terrain_width/2, 0), chrono.ChVectorD(
-        #     0, 0, 1), self.terrain_length, self.terrain_width, self.terrain_thickness)
         patch = self.terrain.AddPatch(
             patch_mat, chrono.CSYSNORM, self._terrain_length, self._terrain_width)
         patch.SetTexture(self.chronopath +
                          'textures/concrete.jpg', 200, 200)
-        patch.SetColor(chrono.ChColor(0.8, 0.8, 0.5))
+        patch.SetColor(chrono.ChColor(1., 0., 0.))
         self.terrain.Initialize()
 
         # ---------------------------
@@ -239,7 +240,7 @@ class art_lot17(ChronoBaseEnv):
         # Get the initial observation
         # ---------------------------
         self.observation = self.get_observation()
-        self._old_distance = self._vector_to_goal.Length()  # To track progress
+        self._old_distance = self._vector_to_goal_withoutNoise.Length()  # To track progress
 
         self._debug_reward = 0
         self._render_setup = False
@@ -303,7 +304,7 @@ class art_lot17(ChronoBaseEnv):
                 self.vis.Initialize()
                 self.vis.AddSkyBox()
                 self.vis.AddCamera(chrono.ChVectorD(
-                    0, 0, 30), chrono.ChVectorD(0, 0, 1))
+                    0, 0, 32), chrono.ChVectorD(0, 0, 1))
                 self.vis.AddTypicalLights()
                 self.vis.AddLightWithShadow(chrono.ChVectorD(
                     1.5, -2.5, 5.5), chrono.ChVectorD(0, 0, 0.5), 3, 4, 10, 40, 512)
@@ -339,11 +340,11 @@ class art_lot17(ChronoBaseEnv):
         A fixed -10 reward for moving by less than a centimeter in 0.1 seconds
         :return: Reward for the current step
         """
-        scale_pos = 200
-        scale_neg = 200
+        scale_pos = 20
+        scale_neg = 20
         # Distance to goal
         # distance = np.linalg.norm(self.observation[:3] - self.goal)
-        distance = self._vector_to_goal.Length()  # chrono vector
+        distance = self._vector_to_goal_withoutNoise.Length()  # chrono vector
         if (self._old_distance > distance):
             reward = scale_pos * (self._old_distance - distance)
         else:
@@ -351,7 +352,7 @@ class art_lot17(ChronoBaseEnv):
 
         # If we have not moved even by 1 cm in 0.1 seconds, give penalty
         if (np.abs(self._old_distance - distance) < 0.01):
-            reward -= 10
+            reward -= 5
 
         # Update the old distance
         self._old_distance = distance
@@ -366,13 +367,13 @@ class art_lot17(ChronoBaseEnv):
         """
         # If we are within a certain distance of the goal -> Terminate and give big reward
         # if np.linalg.norm(self.observation[:3] - self.goal) < 0.4:
-        if np.linalg.norm(self._vector_to_goal.Length()) < 2:
+        if np.linalg.norm(self._vector_to_goal_withoutNoise.Length()) < 2:
             print('--------------------------------------------------------------')
             print('Goal Reached')
             print('Initial position: ', self._initpos)
             print('Goal position: ', self.goal)
             print('--------------------------------------------------------------')
-            self.reward += 2500
+            self.reward += 5000
             self._debug_reward += self.reward
             self._terminated = True
             self._success = True
@@ -383,9 +384,9 @@ class art_lot17(ChronoBaseEnv):
             print('Time out')
             print('Initial position: ', self._initpos)
             # dist = np.linalg.norm(self.observation[:3] - self.goal)
-            dist = self._vector_to_goal.Length()
+            dist = self._vector_to_goal_withoutNoise.Length()
             print('Final position of rover: ',
-                  self.rover.GetChassis().GetPos())
+                  self.chassis_body.GetPos())
             print('Goal position: ', self.goal)
             print('Distance to goal: ', dist)
             # Penalize based on how far we are from the goal
@@ -405,24 +406,28 @@ class art_lot17(ChronoBaseEnv):
         # Check if we are in contact with the wall
 
         if (self._check_collision()):
+            self.reward -= 300
+            self._debug_reward += self.reward
             print('--------------------------------------------------------------')
             print('Collision')
-            print('Initial position: ', self._initpos)
+            print('Vehicle Postion: ', self.vehicle_pos)
             print('Goal position: ', self.goal)
+            print('Reward: ', self.reward)
+            print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
-            self.reward -= 500
-            self._debug_reward += self.reward
             self._truncated = True
 
         # Check if we have fallen off the terrain
         if (self._fallen_off_terrain()):
+            self.reward -= 300
+            self._debug_reward += self.reward
             print('--------------------------------------------------------------')
             print('Fallen off terrain')
-            print('Initial position: ', self._initpos)
+            print('Vehicle Postion: ', self.vehicle_pos)
             print('Goal position: ', self.goal)
+            print('Reward: ', self.reward)
+            print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
-            self.reward -= 500
-            self._debug_reward += self.reward
             self._truncated = True
 
     def get_observation(self):
@@ -439,6 +444,8 @@ class art_lot17(ChronoBaseEnv):
                  3. Vehicle heading
                  4. Heading needed to reach the goal
                  5. Velocity of vehicle
+                 6. GPS Position transformed to Cartesian - X axis
+                 7. GPS Position transformed to Cartesian - Y axis
         """
 
         observation = np.zeros(self._num_observations)
@@ -446,7 +453,6 @@ class art_lot17(ChronoBaseEnv):
         gps_buffer = self.gps.GetMostRecentGPSBuffer()
         cur_gps_data = None
         self.vehicle_pos = self.chassis_body.GetPos()
-        print("Vehicle position is: ", self.vehicle_pos)
         # Get the GPS data from the buffer
         if self._have_gps:
             if gps_buffer.HasData():
@@ -462,6 +468,9 @@ class art_lot17(ChronoBaseEnv):
 
         # Goal is currently not read from the GPS sensor
         self._vector_to_goal = npArray_to_chVector(self.goal) - cur_gps_data
+        # This is to calculate reward - there is no need for the reward to be noisy while training even if the observation is noisy
+        self._vector_to_goal_withoutNoise= npArray_to_chVector(self.goal) - self.vehicle_pos
+        self._vector_to_goal_withoutNoise.z = 0
         vector_to_goal_local = self.chassis_body.GetRot().RotateBack(self._vector_to_goal)
         self._vector_to_goal.z = 0  # Set this to zero to not effect reward calculation
 
@@ -485,18 +494,50 @@ class art_lot17(ChronoBaseEnv):
         observation[2] = vehicle_heading
         observation[3] = target_heading_to_goal
         observation[4] = vehicle_velocity.Length()
+        observation[5] = cur_gps_data.x
+        observation[6] = cur_gps_data.y
 
         return observation
 
     def initialize_vehicle_pos(self, seed=1):
         """
         Initialize the pose of the robot
+        The positon is randomly initialized between the four corners with a random noise of 1 m on x and y
+        The rotation is a random angle between -pi and pi 
         """
         # Initialize vehicle at the left corner of the terrain
-        # No randomness for now
-        self._initpos = chrono.ChVectorD(-12.5, 30, 0.1)
+        
+        # Choose Pick a corner
+        corner = np.random.randint(0, 4)
+        # rot_random = np.random.randint(0, 4)
+        noise_x = np.random.uniform(low=0, high=1)
+        noise_y = np.random.uniform(low=0, high=1)
         self._initRot = chrono.ChQuaternionD(1., 0, 0, 0)
-        self._initRot.Q_from_AngZ(-math.pi/2)
+
+        # rot_options = [-math.pi/2, math.pi/2, -math.pi, math.pi]
+
+
+
+        x_mean = 15
+        y_mean = 35
+        if(corner == 0):
+            self._initpos = chrono.ChVectorD(-x_mean + noise_x, y_mean + noise_y, 0.1)
+            random_angle = np.random.uniform(low=-np.pi/2, high=0)
+            self._initRot.Q_from_AngZ(random_angle)
+        elif(corner == 1):
+            self._initpos = chrono.ChVectorD(x_mean + noise_x, y_mean + noise_y, 0.1)
+            random_angle = np.random.uniform(low=-np.pi, high=-np.pi/2)
+            self._initRot.Q_from_AngZ(random_angle)
+        elif(corner == 2):
+            self._initpos = chrono.ChVectorD(-x_mean + noise_x, -y_mean + noise_y, 0.1)
+            random_angle = np.random.uniform(low=0, high=np.pi/2.)
+            self._initRot.Q_from_AngZ(random_angle)
+        elif(corner == 3):
+            self._initpos = chrono.ChVectorD(x_mean + noise_x, -y_mean + noise_y, 0.1)
+            random_angle = np.random.uniform(low=np.pi/2, high=np.pi)
+            self._initRot.Q_from_AngZ(random_angle)
+        
+        
         self.vehicle.SetInitPosition(
             chrono.ChCoordsysD(self._initpos, self._initRot))
 
@@ -512,17 +553,17 @@ class art_lot17(ChronoBaseEnv):
 
         # Select a random point in a rectange of dimension 32.5 X 65 centered at the origin
         # The point should not be within a rectangle of dimension 17.5 x 55 centered at the origin
-        # The point should not be within 5 meters of where the vehicle starts
+        # The point should not be within 20 (vehicle_goal_dist_threshold) meters of where the vehicle starts
 
         wall_x_tolerance = 1.25
-        wall_y_tolerance = 2.5
+        wall_y_tolerance = 1.25
 
         goal_wall_x_max = self._wall_box_length/2 + wall_x_tolerance
 
         goal_wall_y_max = self._wall_box_width/2 + wall_y_tolerance
 
         boundary_x_tolerance = 2.5
-        boundary_y_tolerance = 5
+        boundary_y_tolerance = 2.5
 
         goal_boundary_x_max = self._terrain_length/2 - boundary_x_tolerance
 
@@ -531,6 +572,7 @@ class art_lot17(ChronoBaseEnv):
         vehicle_x_pos = self.vehicle_pos.x
         vehicle_y_pos = self.vehicle_pos.y
 
+        vehicle_goal_dist_threshold = 20
         # Guess goal ensuring its within the boundaries
         self.goal = np.random.uniform(low=[-goal_boundary_x_max, -goal_boundary_y_max], high=[
             goal_boundary_x_max, goal_boundary_y_max], size=(2,))
@@ -538,7 +580,7 @@ class art_lot17(ChronoBaseEnv):
         goal_is_inside_wall = (np.abs(self.goal[0]) < goal_wall_x_max) or (np.abs(
             self.goal[1]) < goal_wall_y_max)
         goal_is_close_to_vehicle = (math.sqrt(
-            (self.goal[0] - vehicle_x_pos)**2 + (self.goal[1] - vehicle_y_pos)**2) < 5)
+            (self.goal[0] - vehicle_x_pos)**2 + (self.goal[1] - vehicle_y_pos)**2) < vehicle_goal_dist_threshold)
 
         while (goal_is_inside_wall or goal_is_close_to_vehicle):
             self.goal = np.random.uniform(low=[-self._terrain_length/2, -self._terrain_width/2], high=[
@@ -548,11 +590,9 @@ class art_lot17(ChronoBaseEnv):
                 self.goal[1]) < goal_wall_y_max
 
             goal_is_close_to_vehicle = (math.sqrt(
-                (self.goal[0] - vehicle_x_pos)**2 + (self.goal[1] - vehicle_y_pos)**2) < 5)
+                (self.goal[0] - vehicle_x_pos)**2 + (self.goal[1] - vehicle_y_pos)**2) < vehicle_goal_dist_threshold)
 
         self.goal = np.append(self.goal, 0)
-
-        print("Goal in cartesian frame is: ", self.goal)
 
         # -----------------------------
         # Set up goal visualization
@@ -579,7 +619,7 @@ class art_lot17(ChronoBaseEnv):
         Just checking CG for now - no bounding box and no actual collision
         """
         vehicle_is_inside_walls = abs(
-            self.vehicle_pos.x) < self._wall_box_length/2 or abs(self.vehicle_pos.y) < self._wall_box_width/2
+            self.vehicle_pos.x) < self._wall_box_length/2 and abs(self.vehicle_pos.y) < self._wall_box_width/2
         if (vehicle_is_inside_walls):
             return True
         else:
@@ -590,8 +630,8 @@ class art_lot17(ChronoBaseEnv):
         Check if we have fallen off the terrain
         For now just checks if the CG of the vehicle is within the rectangle bounds with some tolerance
         """
-        terrain_length_tolerance = self._terrain_length/2 - 1.25
-        terrain_width_tolerance = self._terrain_width/2 - 2.5
+        terrain_length_tolerance = self._terrain_length/2
+        terrain_width_tolerance = self._terrain_width/2
 
         vehicle_is_outside_terrain = abs(self.vehicle_pos.x) > terrain_length_tolerance or abs(
             self.vehicle_pos.y) > terrain_width_tolerance
@@ -606,7 +646,7 @@ class art_lot17(ChronoBaseEnv):
         """
 
         self._initialize_sensor_manager()
-        self._add_gps_sensor(std=0.005)
+        self._add_gps_sensor(std=0.01)
         self._have_gps = True
         self._add_magnetometer_sensor(std=0)
         self._have_imu = True

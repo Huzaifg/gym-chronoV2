@@ -18,7 +18,7 @@ class ChronoBaseEnv(gym.Env):
 
     def __init__(self, render_mode='human'):
         # Data subdirectory in this folder
-        self.chronopath = os.path.join(os.path.dirname(__file__), 'data')
+        self.chronopath = os.path.join(os.path.dirname(__file__), 'data/')
         chrono.SetChronoDataPath(self.chronopath)
         self.render_mode = render_mode
         self.render_setup = False
