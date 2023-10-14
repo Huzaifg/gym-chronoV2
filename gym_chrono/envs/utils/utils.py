@@ -6,8 +6,7 @@ import pychrono.sensor as sens
 import math
 import numpy as np
 
-# Since Chrono GPS2Cartesian function is not working - using Harry's here
-
+# Function from ART for transforming 
 
 class graph(object):
     def __init__(self):

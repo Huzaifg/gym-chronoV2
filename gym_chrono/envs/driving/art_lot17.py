@@ -20,7 +20,7 @@ except:
 # Gym chrono imports
 # Custom imports
 from gym_chrono.envs.ChronoBase import ChronoBaseEnv
-from gym_chrono.envs.utils.utils import CalcInitialPose, chVector_to_npArray, npArray_to_chVector, SetChronoDataDirectories, graph
+from gym_chrono.envs.utils.utils import CalcInitialPose, chVector_to_npArray, npArray_to_chVector, SetChronoDataDirectories
 
 # Standard Python imports
 import os
@@ -87,8 +87,6 @@ class art_lot17(ChronoBaseEnv):
         self.sensor_manager = None
         self._have_gps = False  # Flag to check if GPS sensor is present
         self.gps = None  # GPS if needed is added in add_sensors
-        # Need this graph to move from GPS to cartesian as the Chrono function is broken
-        self.gps_graph = None
         self._have_imu = False  # Flag to check if IMU sensor is present
         self.gps_origin = None  # GPS origin in lat, long, alt
         self.goal_gps = None  # Goal in GPS frame
