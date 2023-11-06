@@ -128,45 +128,44 @@ if __name__ == '__main__':
     torch.cuda.is_available = lambda : False
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    num_cpu = 8
+    num_cpu = 2
     n_steps = 500  # Set to make an update after the end of 1 episode (50 s)
 
     # Set mini batch is the experiences from one episode (50 s) so the whole batch is consumed to make an update
     batch_size = n_steps
 
     # Set the number of timesteps such that we get 100 updates
-    total_timesteps = 100 * n_steps * num_cpu
+    total_timesteps = 300 * n_steps * num_cpu
 
     policy_kwargs = dict(
                     features_extractor_class=CustomCNN,
-                    features_extractor_kwargs=dict(features_dim=128),
+                    features_extractor_kwargs=dict(features_dim=256),
                     activation_fn=th.nn.ReLU, 
-                    net_arch=dict(pi=[256, 128, 32, 16, 32, 64], 
-                                  vf=[256, 128, 32, 16, 32, 64]))
+                    net_arch=dict(pi=[128, 64, 32, 16, 8], 
+                                  vf=[128, 64, 32, 16, 8]))
 
     log_path = "logs/"
     # set up logger
-    new_logger = configure(log_path, ["stdout", "csv", "tensorboard"])
     # Vectorized envieroment
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    model = PPO('CnnPolicy', env, learning_rate=5e-4, n_steps=n_steps,batch_size=batch_size, verbose=1, n_epochs=10, policy_kwargs=policy_kwargs,  tensorboard_log=log_path)
+    #model = PPO('CnnPolicy', env, learning_rate=5e-4, n_steps=n_steps,batch_size=batch_size, verbose=1, n_epochs=10, policy_kwargs=policy_kwargs,  tensorboard_log=log_path)
+    model = PPO.load(("ppo_checkpoint6"), env)
     print(model.policy)
-    #model.set_logger(new_logger)
     reward_store = []
     std_reward_store = []
-    num_of_saves = 100
+    num_of_saves = 25
     training_steps_per_save = total_timesteps // num_of_saves
     print(training_steps_per_save)
 
     for i in range(num_of_saves):
         print(i)
-        model.learn(training_steps_per_save, callback=TensorboardCallback())
+        model.learn(training_steps_per_save)
         print("tp0")
         checkpoint_dir = 'ppo_checkpoints'
         print("tp1")
         os.makedirs(checkpoint_dir, exist_ok=True)
         mean_reward, std_reward = evaluate_policy(
-            model, env_single, n_eval_episodes=5)
+            model, env_single, n_eval_episodes=3)
         print("tp2")
         print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
         print("tp3")

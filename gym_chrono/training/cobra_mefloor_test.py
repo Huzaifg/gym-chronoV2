@@ -13,7 +13,7 @@ import os
 env = cobra_corridor_mefloor()
 
 
-loaded_model = PPO.load("ppo_checkpoint14")
+loaded_model = PPO.load("ppo_checkpoint24")
 
 # i = 50
 # checkpoint_dir = 'ppo_checkpoints'
@@ -25,7 +25,7 @@ loaded_model = PPO.load("ppo_checkpoint14")
 #     loaded_model, env, n_eval_episodes=5)
 # print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
 
-sim_time = 65
+sim_time = 50
 timeStep = 0.1
 
 totalSteps = int(sim_time / timeStep)
@@ -37,7 +37,7 @@ for step in range(totalSteps):
     print("Action: ", action)
     obs, reward, teriminated, truncated, info = env.step(action)
     print("Distance to goal: ", env._old_distance)
-    print("obs=", obs, "reward=", reward, "done=", (teriminated or truncated))
+    print("reward=", reward, "done=", (teriminated or truncated))
     
     env.render(mode='rgb_array')
     frame = env.render(mode='rgb_array')

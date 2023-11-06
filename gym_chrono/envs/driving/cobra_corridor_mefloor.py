@@ -110,9 +110,10 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self._render_setup = False
 
         # Process exploration reward
-        self.grid_resolution = 0.25
+        self.grid_resolution = 0.1
         grid_size = (int(self._terrain_length/self.grid_resolution)+1, int(self._terrain_width/self.grid_resolution)+1)
         self.grid = np.zeros(grid_size, dtype=int)
+        self.prev_reward = 0.0
         
     def reset(self, seed=None, options=None):
         self._sens_manager = None
@@ -123,6 +124,7 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self.radius = None
         self.object_index = None
         self.object_radius = None
+        self.prev_reward = 0.0
         
         """
         Reset the environment to its initial state -> Set up for standard gym API
@@ -215,16 +217,16 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         self.driver.SetSteering(steer_angle)  # Maybe we should ramp this steer
         # Wheel speed is ramped up to wheel_speed with a ramp time of 1/control_frequency
         self.driver.SetMotorSpeed(wheel_speed)
-        
-        grid_x_cur = self.rover.GetChassis().GetPos().x/self.grid_resolution
-        grid_y_cur = self.rover.GetChassis().GetPos().y/self.grid_resolution
-        self.grid[int(grid_x_cur), int(grid_y_cur)] = 1
+    
 
         for i in range(self._steps_per_control):
             self.rover.Update()
             self.system.DoStepDynamics(self._step_size)
             self.vehicle_pos = self.rover.GetChassis().GetPos()
             self._sens_manager.Update()
+            grid_x_cur = self.rover.GetChassis().GetPos().x/self.grid_resolution
+            grid_y_cur = self.rover.GetChassis().GetPos().y/self.grid_resolution
+            self.grid[int(grid_x_cur), int(grid_y_cur)] = 1
             # print(self.rover.GetChassis().GetPos())
 
         # Get the observation
@@ -285,9 +287,10 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         Get the reward for the current step
         """
         
-        reward = np.sum(self.grid)
+        reward = np.sum(self.grid) - self.prev_reward
         reward = reward + 0.0
-
+        self.prev_reward = np.sum(self.grid)
+        
         return reward
 
     def _is_terminated(self):
@@ -315,24 +318,24 @@ class cobra_corridor_mefloor(ChronoBaseEnv):
         # If we have collided -> Truncate and give big negative reward
         self.check_collision()
         if self._collision:
+            self.reward -= 300
+            self._debug_reward += self.reward
+            self._truncated = True
             print('--------------------------------------------------------------')
             print('Crashed')
             print('Vehicle Postion: ', self.vehicle_pos)
             print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
-            self.reward -= 1500
-            self._debug_reward += self.reward
-            self._truncated = True
         # Vehicle should not fall off the terrain
         elif (abs(self.vehicle_pos.x) < 1.0 or (abs(self.vehicle_pos.x) > self._terrain_length - 1.0) or (abs(self.vehicle_pos.y) < 1.0) or (abs(self.vehicle_pos.y) > self._terrain_width - 1.0)):
+            self.reward -= 300
+            self._debug_reward += self.reward
+            self._truncated = True
             print('--------------------------------------------------------------')
             print('Outside of terrain')
             print('Vehicle Position: ', self.vehicle_pos)
             print('Accumulated Reward: ', self._debug_reward)
             print('--------------------------------------------------------------')
-            self.reward -= 1500
-            self._debug_reward += self.reward
-            self._truncated = True
 
     def initialize_robot_pos(self, seed=1):
         """

@@ -1,3 +1,6 @@
+
+
+
 import gymnasium as gym
 
 from typing import Callable
@@ -19,13 +22,12 @@ from torch.distributions.normal import Normal
 import cv2
 
 
-if __name__ == '__main__':
-    # env = cobra_corridor()
-    ####### PARALLEL ##################
 
+
+if __name__ == '__main__':
     num_cpu = 8
     # Create the vectorized environment
-    env = gym.make('Pusher-v4',render_mode='human')
+    env = gym.make('BipedalWalker-v3',render_mode='human')
 
     model = PPO('MlpPolicy', env, learning_rate=5e-4, verbose=1)
 
@@ -42,11 +44,4 @@ if __name__ == '__main__':
     mean_reward, std_reward = evaluate_policy(
         model, env, n_eval_episodes=100)
     print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
-###############################
 
-####### SEQUENTIAL ##################
-# model = PPO('MlpPolicy', env, verbose=1).learn(100)
-###########################
-# model.save(f"PPO_cobra")
-# mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=100)
-# print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
