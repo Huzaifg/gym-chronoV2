@@ -5,10 +5,10 @@ This repository consists of a set of gymnasium "environments" which are essentia
 
 ## Repository Structure
 This repository is structured as follows:
-env: gymnasium environment wrapper to enable RL training using PyChrono simulation
-test: testing scripts to visualize the training environment
-training: python scripts to train the models for each example env
-evaluate: python scripts to evaluate a trained model
+**env**: gymnasium environment wrapper to enable RL training using PyChrono simulation
+**test**: testing scripts to visualize the training environment
+**training**: python scripts to train the models for each example env
+**evaluate**: python scripts to evaluate a trained model
 
 Currently, this repository also contains scripts to train simple RL models using stable-baselines3 (see gym_chrono/training). So, you would also need to install stable-baselines3
 The setup has a few rough edges which will be evened out in due time.  
