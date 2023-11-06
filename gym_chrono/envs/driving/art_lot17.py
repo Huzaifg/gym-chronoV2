@@ -137,7 +137,7 @@ class art_lot17(ChronoBaseEnv):
         :param options: Options for the simulation (dictionary)
         """
         # Initialize the vehicle
-        self.vehicle = veh.RCCar()
+        self.vehicle = veh.ARTcar()
 
         # -----------------------------
         # Contact mand collision properties
