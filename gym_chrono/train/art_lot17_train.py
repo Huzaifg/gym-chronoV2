@@ -12,7 +12,7 @@
 # Authors: Huzaifa Unjhawala, Jason Zhou
 # =======================================================================================
 #
-# This file contains a script to train a PPO Cobra agent to navigate to a goal point
+# This file contains a script to train a PPO ART agent to navigate to a goal point on lot17
 # A Tensorboard is used for logging of training statistics. The training statistics are
 # saved in the logs folder.  Checkpoints are saved in the ppo_checkpoints folder.
 #
@@ -33,7 +33,7 @@ from stable_baselines3.common.logger import HParam
 import torch as th
 
 
-from gym_chrono.envs.driving.cobra_corridor import cobra_corridor
+from gym_chrono.envs.driving.art_lot17 import art_lot17
 
 
 class TensorboardCallback(BaseCallback):
@@ -81,7 +81,7 @@ def make_env(rank: int, seed: int = 0) -> Callable:
     """
 
     def _init() -> gym.Env:
-        env = cobra_corridor()
+        env = art_lot17()
         env.reset(seed=seed + rank)
         return env
 
@@ -90,7 +90,7 @@ def make_env(rank: int, seed: int = 0) -> Callable:
 
 
 if __name__ == '__main__':
-    env_single = cobra_corridor()
+    env_single = art_lot17()
     ####### PARALLEL ##################
 
     num_cpu = 12
@@ -103,9 +103,9 @@ if __name__ == '__main__':
     total_timesteps = 1000 * n_steps * num_cpu
 
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
-                         net_arch=dict(pi=[64, 128, 128, 64], vf=[64, 128, 128, 64]))
+                         net_arch=dict(pi=[64, 128, 64], vf=[64, 128, 64]))
 
-    log_path = "logs/"
+    log_path = "art_lot17_10_13/logs/"
     # set up logger
     new_logger = configure(log_path, ["stdout", "csv", "tensorboard"])
     # Vectorized envieroment
@@ -119,8 +119,9 @@ if __name__ == '__main__':
     num_of_saves = 100
     training_steps_per_save = total_timesteps // num_of_saves
     for i in range(num_of_saves):
+        print(i)
         model.learn(training_steps_per_save, callback=TensorboardCallback())
-        checkpoint_dir = 'ppo_checkpoints'
+        checkpoint_dir = 'art_lot17_10_13'
         os.makedirs(checkpoint_dir, exist_ok=True)
         mean_reward, std_reward = evaluate_policy(
             model, env_single, n_eval_episodes=10)

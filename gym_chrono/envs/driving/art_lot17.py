@@ -1,3 +1,42 @@
+# =============================================================================
+# PROJECT CHRONO - http://projectchrono.org
+#
+# Copyright (c) 2021 projectchrono.org
+# All right reserved.
+#
+# Use of this source code is governed by a BSD-style license that can be found
+# in the LICENSE file at the top level of the distribution and at
+# http://projectchrono.org/license-chrono.txt.
+#
+# =====================================================================================
+# Authors: Huzaifa Unjhawala
+# =====================================================================================
+#
+# This environment is a gym environment to train the ART vehicle Chrono
+# simulation to reach a point in the lot 17 parking lot
+#
+# ======================================================================================
+#
+# Action Space: The action space is the steering and throttle of the vehicle
+# The steering is normalized between -1 (left turn) and 1
+# The throttle is normalized between 0 and 1
+# Box(low=np.array([-1.0, 0]), high=np.array([1.0, 1.0]), shape=(2,), dtype=np.float64)
+#
+# ======================================================================================
+#
+# Observation Space: The observation space consists of the following quantities
+# 1. Delta x of the goal in local frame of the vehicle
+# 2. Delta y of the goal in local frame of the vehicle
+# 3. Vehicle heading
+# 4. Heading needed to reach the goal
+# 5. Velocity of vehicle
+# 6. GPS Position transformed to Cartesian - X axis
+# 7. GPS Position transformed to Cartesian - Y axis
+# Box(low=-200, high=200, shape=(7,), dtype=np.float64)
+#
+# ======================================================================================
+
+
 # Chrono imports
 import pychrono as chrono
 import pychrono.vehicle as veh
@@ -467,7 +506,8 @@ class art_lot17(ChronoBaseEnv):
         # Goal is currently not read from the GPS sensor
         self._vector_to_goal = npArray_to_chVector(self.goal) - cur_gps_data
         # This is to calculate reward - there is no need for the reward to be noisy while training even if the observation is noisy
-        self._vector_to_goal_withoutNoise= npArray_to_chVector(self.goal) - self.vehicle_pos
+        self._vector_to_goal_withoutNoise = npArray_to_chVector(
+            self.goal) - self.vehicle_pos
         self._vector_to_goal_withoutNoise.z = 0
         vector_to_goal_local = self.chassis_body.GetRot().RotateBack(self._vector_to_goal)
         self._vector_to_goal.z = 0  # Set this to zero to not effect reward calculation
@@ -504,7 +544,7 @@ class art_lot17(ChronoBaseEnv):
         The rotation is a random angle between -pi and pi 
         """
         # Initialize vehicle at the left corner of the terrain
-        
+
         # Choose Pick a corner
         corner = np.random.randint(0, 4)
         # rot_random = np.random.randint(0, 4)
@@ -514,28 +554,29 @@ class art_lot17(ChronoBaseEnv):
 
         # rot_options = [-math.pi/2, math.pi/2, -math.pi, math.pi]
 
-
-
         x_mean = 15
         y_mean = 35
-        if(corner == 0):
-            self._initpos = chrono.ChVectorD(-x_mean + noise_x, y_mean + noise_y, 0.1)
+        if (corner == 0):
+            self._initpos = chrono.ChVectorD(-x_mean +
+                                             noise_x, y_mean + noise_y, 0.1)
             random_angle = np.random.uniform(low=-np.pi/2, high=0)
             self._initRot.Q_from_AngZ(random_angle)
-        elif(corner == 1):
-            self._initpos = chrono.ChVectorD(x_mean + noise_x, y_mean + noise_y, 0.1)
+        elif (corner == 1):
+            self._initpos = chrono.ChVectorD(
+                x_mean + noise_x, y_mean + noise_y, 0.1)
             random_angle = np.random.uniform(low=-np.pi, high=-np.pi/2)
             self._initRot.Q_from_AngZ(random_angle)
-        elif(corner == 2):
-            self._initpos = chrono.ChVectorD(-x_mean + noise_x, -y_mean + noise_y, 0.1)
+        elif (corner == 2):
+            self._initpos = chrono.ChVectorD(-x_mean +
+                                             noise_x, -y_mean + noise_y, 0.1)
             random_angle = np.random.uniform(low=0, high=np.pi/2.)
             self._initRot.Q_from_AngZ(random_angle)
-        elif(corner == 3):
-            self._initpos = chrono.ChVectorD(x_mean + noise_x, -y_mean + noise_y, 0.1)
+        elif (corner == 3):
+            self._initpos = chrono.ChVectorD(
+                x_mean + noise_x, -y_mean + noise_y, 0.1)
             random_angle = np.random.uniform(low=np.pi/2, high=np.pi)
             self._initRot.Q_from_AngZ(random_angle)
-        
-        
+
         self.vehicle.SetInitPosition(
             chrono.ChCoordsysD(self._initpos, self._initRot))
 

@@ -1,3 +1,38 @@
+# =======================================================================================
+# PROJECT CHRONO - http://projectchrono.org
+#
+# Copyright (c) 2021 projectchrono.org
+# All right reserved.
+#
+# Use of this source code is governed by a BSD-style license that can be found
+# in the LICENSE file at the top level of the distribution and at
+# http://projectchrono.org/license-chrono.txt.
+#
+# =======================================================================================
+# Authors: Huzaifa Unjhawala
+# =======================================================================================
+#
+# This file contains the gym environment for the ART vehicle Chrono simulation to
+# track way points that are specified in a csv file in ../data/training_wpts/ the name of
+# the csv file is specified in the _wptFiles variable (needs to be set internally as of
+# Nov 7 2023)
+#
+# =======================================================================================
+#
+# Action Space: The action space is the steering and throttle of the vehicle
+# The steering is normalized between -1 (left turn) and 1
+# The throttle is normalized between 0 and 1
+# Box(low=np.array([-1.0, 0]), high=np.array([1.0, 1.0]), shape=(2,), dtype=np.float64)
+#
+# =======================================================================================
+#
+# Observastion Space: The observation space is the position and velocity of the 5 closest
+# way points after applying the look ahead distance
+# self.observation_space = gym.spaces.Box(
+#           low=-100, high=100, shape=(self._num_wpts_observed*4,), dtype=np.float64)
+#
+# =======================================================================================
+
 # pychrono imports
 import pychrono as chrono
 import pychrono.vehicle as veh
@@ -30,8 +65,9 @@ class art_wpts(ChronoBaseEnv):
         SetChronoDataDirectories()
 
         # Define action space
+        # Action space is the throttle and steering - Throttle is between 0 and 1, steering is -1 to 1
         self.action_space = gym.spaces.Box(
-            low=-1, high=1, shape=(2,), dtype=np.float64)
+            low=np.array([-1.0, 0]), high=np.array([1.0, 1.0]), shape=(2,), dtype=np.float64)
 
         # Define observation space -> This is the position and velocity of the 5 closest way points
         # Way points contain x,y,yaw and velocity

@@ -39,3 +39,6 @@ node_modules/
 *.zip
 **/data/
 *.pov
+
+# Ignore the logs folder in the train folder
+**/logs/
