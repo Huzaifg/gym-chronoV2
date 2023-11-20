@@ -13,7 +13,7 @@ env = cobra_wpts()
 
 # loaded_model = PPO.load("PPO_cobra")
 
-i = 6
+i = 10
 # checkpoint_dir = 'cobra_noObstacles_10_09'
 checkpoint_dir = 'ppo_checkpoints'
 
@@ -24,8 +24,8 @@ loaded_model = PPO.load(os.path.join(
 #     loaded_model, env, n_eval_episodes=5)
 # print(f"mean_reward:{mean_reward:.2f} +/- {std_reward:.2f}")
 
-sim_time = 50
-timeStep = 0.1
+sim_time = 180
+timeStep = 0.2
 
 totalSteps = int(sim_time / timeStep)
 
