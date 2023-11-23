@@ -94,9 +94,7 @@ class cobra_wpts(ChronoBaseEnv):
 
         # Update the observation space with the new bounds
         self.observation_space = gym.spaces.Box(
-            low=lower_bounds,
-            high=upper_bounds,
-            dtype=np.float64)
+            low=-20, high=20, shape=(1,), dtype=np.float64)
 
         # -----------------------------
         # Chrono simulation parameters
@@ -148,30 +146,7 @@ class cobra_wpts(ChronoBaseEnv):
         :param seed: Seed for the random number generator
         :param options: Options for the simulation (dictionary)
         """
-        # Smoothness Reward
-        self.action_history = []
-        self.action_history_size = 10 
-
-        # Heading error history register
-        self.heading_error_history = []
-        self.heading_error_history_size = 10
-
-        # Cobra tracking lookahead
-        self.lookahead = 2.0
-
-        # Path files used for training
-        path_files = [
-        "/home/jason/Desktop/main_fork/chrono/data/robot/environment/room_1/PATH1.txt",
-        "/home/jason/Desktop/main_fork/chrono/data/robot/environment/room_1/PATH2.txt",
-        "/home/jason/Desktop/main_fork/chrono/data/robot/environment/room_1/PATH3.txt",
-        "/home/jason/Desktop/main_fork/chrono/data/robot/environment/room_1/PATH4.txt",
-        "/home/jason/Desktop/main_fork/chrono/data/robot/environment/room_1/PATH5.txt"
-        ]
-        self.path_file_name = random.choice(path_files)
         
-        # Waypoints
-        self.x_coords, self.y_coords, self.z_coords = [], [], []
-
         # Read waypoints from file
         def read_waypoints(file_path):
             x_coords, y_coords, z_coords = [], [], []
@@ -224,16 +199,8 @@ class cobra_wpts(ChronoBaseEnv):
             1/self._control_frequency, self.motor_driver_speed)
         self.rover.SetDriver(self.driver)
 
-        # Choose two random waypoints from the path to initialize Cobra
-        waypoints_indices = random.sample(range(len(self.x_coords)), 2)
-        point1 = (self.x_coords[waypoints_indices[0]], self.y_coords[waypoints_indices[0]])
-        point2 = (self.x_coords[waypoints_indices[1]], self.y_coords[waypoints_indices[1]])
-
-        # Calculate the expected orientation
-        orientation = random.uniform(-np.pi, np.pi)
-
-        # Initialize position of the robot at one of the points
-        self._initpos = chrono.ChVectorD(point1[0], point1[1], 0.4) # Assuming a fixed z-coordinate
+        # Initialize position of robot
+        self._initpos = chrono.ChVectorD(-4.165707, -17.150379, 0.4)
 
         self._initrot = chrono.ChQuaternionD(1,0,0,0)
         self._initrot.Q_from_AngZ(orientation)
@@ -308,6 +275,8 @@ class cobra_wpts(ChronoBaseEnv):
         self.observation = self.get_observation()
 
         # Get reward
+        # Reward consists of three components: correction reward, smoothness reward, path proximity reward
+        
         self.reward = self.get_reward()
         self._debug_reward += self.reward
 
@@ -348,35 +317,14 @@ class cobra_wpts(ChronoBaseEnv):
             raise NotImplementedError
 
     def get_reward(self):
+        """
+        Get the reward for the current step
+        """
         
-        # Reward in this env contains three conponents:
-        # 1. Soothness Penalty
-        # 2. Path Proximity Reweard
-        # 3. Deviation Penalty
-        reward = 0
-
-        # Smoothness Penalty
-        smoothness_penalty = self.calculate_smoothness_penalty()
-        reward = reward - smoothness_penalty
-
-        # Path Proximity Reward
-        path_proximity_reward = self.calculate_path_proximity_reward()
-        reward = reward + path_proximity_reward
-
-        # Deviation Penalty
-        path_deviation_penalty = self.calculate_path_deviation_penalty()
-        reward = reward - path_deviation_penalty
-
-        # Debug Output
-        # print("smooth reward:")
-        # print(smoothness_penalty)
-        # print("proxy reward:")
-        # print(path_proximity_reward)
-        # print("dev reward:")
-        # print(path_deviation_penalty)
-        # print("tot reward: ")
-        # print(self.reward)
-
+        max_heading_err = np.pi
+        
+        reward = 1 - (abs(self.heading_error)/max_heading_err)
+        
         return reward
 
     def _is_terminated(self):
@@ -414,33 +362,18 @@ class cobra_wpts(ChronoBaseEnv):
             self._truncated = False
 
     def get_observation(self):
+        """
+        Get the observation from the environment
+            1. Steer Error to the way point
+        """
+        observation = np.zeros(1)
 
-        # Initialize observation
-        observation = np.zeros(21)
 
-        # Index 0: motor driver speed
-        observation[0] = self.motor_driver_speed
+        observation[0] = self.heading_error
+     
 
-        # Index 1 - 10: heading error with past 10 history
-        observation[1] = self.heading_error
-        for i in range(2, 11):
-            if i-2 < len(self.heading_error_history):
-                observation[i] = self.heading_error_history[i-2]
-            else:
-                observation[i] = observation[1]  # If not enough history, pad with the first observations
-
-        # Index 10 - 20: action with past 10 history - for smoothness requirement
-        for i in range(11, 11+self.action_history_size):
-            if i-11 < len(self.action_history):
-                observation[i] = self.action_history[i-11][0]
-            else:
-                observation[i] = 0.0
-
+        # For not just the priveledged position of the rover
         return observation
-
-    def euclidean_distance(self, x1, y1, x2, y2):
-        # Helper function
-        return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
     def update_headingerror(self):
         # Helper function
@@ -476,54 +409,3 @@ class cobra_wpts(ChronoBaseEnv):
         # Normalize the error to the range [-pi, pi]
         self.heading_error = (self.heading_error + math.pi) % (2 * math.pi) - math.pi
             
-
-    def calculate_smoothness_penalty(self):
-        # Helper function
-        if len(self.action_history) < self.action_history_size:
-            return 0
-
-        # Extract scalar values from each array in the action history
-        scalar_actions = [action[0] for action in self.action_history]
-
-        # Convert the scalar action list to a NumPy array
-        actions = np.array(scalar_actions)
-
-        # Calculate the standard deviation
-        action_std = np.std(actions)
-
-        # Reward is higher for lower standard deviation
-        smoothness_scaling_factor = 2.4
-        smoothness_penalty = action_std * smoothness_scaling_factor
-
-        return smoothness_penalty
-
-    def calculate_path_proximity_reward(self):
-        # Helper function
-        min_distance = float('inf')
-        for x, y, z in zip(self.x_coords, self.y_coords, self.z_coords):
-            distance = self.euclidean_distance(self.rover_pos.x, self.rover_pos.y, x, y)
-            if distance < min_distance:
-                min_distance = distance
-
-        # Reward inversely proportional to distance, with a maximum cutoff
-        max_proximity_reward = 20  # Adjust as needed
-        proximity_reward = max_proximity_reward / (1 + min_distance)
-        return proximity_reward
-
-    def calculate_path_deviation_penalty(self):
-        # Helper function
-        # Find the closest waypoint
-        min_distance = float('inf')
-        for x, y, z in zip(self.x_coords, self.y_coords, self.z_coords):
-            distance = self.euclidean_distance(self.rover_pos.x, self.rover_pos.y, x, y)
-            if distance < min_distance:
-                min_distance = distance
-
-        # Penalty for deviation larger than 1 meter
-        deviation_threshold = 1.0  # 1 meter threshold
-        penalty = 0
-        penalty_scaling_factor = 10.0
-        if min_distance > deviation_threshold:
-            penalty = (min_distance - deviation_threshold) * penalty_scaling_factor  # Define an appropriate scaling factor
-
-        return penalty
