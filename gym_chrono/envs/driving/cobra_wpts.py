@@ -492,7 +492,7 @@ class cobra_wpts(ChronoBaseEnv):
         action_std = np.std(actions)
 
         # Reward is higher for lower standard deviation
-        smoothness_scaling_factor = 5
+        smoothness_scaling_factor = 2.4
         smoothness_penalty = action_std * smoothness_scaling_factor
 
         return smoothness_penalty

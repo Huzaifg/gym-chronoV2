@@ -13,7 +13,7 @@ env = cobra_wpts()
 
 # loaded_model = PPO.load("PPO_cobra")
 
-i = 10
+i = 36
 # checkpoint_dir = 'cobra_noObstacles_10_09'
 checkpoint_dir = 'ppo_checkpoints'
 
