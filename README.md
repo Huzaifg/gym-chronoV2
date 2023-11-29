@@ -3,6 +3,8 @@ This repository consists of a set of gymnasium "environments" which are essentia
 1) pychrono
 2) gymnasium
 
+NOTE: the current gym-chrono is pegged to chrono fork: https://github.com/zzhou292/chrono, 'feature/robot_model' branch.
+
 ## Repository Structure
 
 This repository is structured as follows:
