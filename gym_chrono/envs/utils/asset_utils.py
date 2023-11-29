@@ -42,7 +42,8 @@ class AssetMesh():
         self.body.SetCollide(True)
         size = self.bounding_box * scale / 2
         self.body.GetCollisionModel().ClearModel()
-        self.body.GetCollisionModel().AddBox(size.x, size.y, z)
+        material = chrono.ChMaterialSurfaceSMC()
+        self.body.GetCollisionModel().AddBox(material, size.x, size.y, z)
         self.body.GetCollisionModel().BuildModel()
 
     def CalcBoundingBox(self):
@@ -172,21 +173,25 @@ class AssetList():
 
                 # Calculate other random values
                 ang = random.random() * chrono.CH_C_PI
-                frame = self.GenerateFrame(pos, ang, scale)
+                # frame = self.GenerateFrame(pos, ang, scale)
                 # scale = 10
                 # asset.Transform(pos, scale, ang)
 
                 self.positions.append(pos)
-                asset.frames.append(frame)
+                # asset.frames.append(frame)
 
                 asset.mesh.pos = pos
                 asset.mesh.ang = ang
                 asset.mesh.scale = scale
 
-                # Update the collision model
-                # asset.mesh.UpdateCollisionModel(scale)
+                asset.mesh.body.SetPos(pos)
+                asset.mesh.body.SetRot(chrono.Q_from_AngAxis(
+                    ang, chrono.ChVectorD(0, 0, 1)))
 
-                # system.Add(asset.mesh.body)
+                # Update the collision model
+                asset.mesh.UpdateCollisionModel(scale)
+
+                system.Add(asset.mesh.body)
 
     def map(self, value, min, max):
         """ Scale a random value to be within a range """

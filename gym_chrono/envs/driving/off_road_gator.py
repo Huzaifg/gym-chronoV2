@@ -196,9 +196,22 @@ class off_road_gator(ChronoBaseEnv):
         # Get Chrono system
         self.m_system = self.m_vehicle.GetSystem()
         self.m_system.Set_G_acc(chrono.ChVectorD(0, 0, -9.81))
-        # self.m_system.SetSolverType(chrono.ChSolver.Type_BARZILAIBORWEIN)
-        # self.m_system.SetSolverMaxIterations(150)
-        # self.m_system.SetMaxPenetrationRecoverySpeed(4.0)
+        self.m_system.SetSolverType(chrono.ChSolver.Type_BARZILAIBORWEIN)
+        self.m_system.SetSolverMaxIterations(150)
+        self.m_system.SetMaxPenetrationRecoverySpeed(4.0)
+
+        # -------------------------------
+        # Rigid Terrain fall back
+        # -------------------------------
+        # self.m_terrain = veh.RigidTerrain(self.m_system)
+        # patch_mat = chrono.ChMaterialSurfaceNSC()
+        # patch_mat.SetFriction(0.9)
+        # patch_mat.SetRestitution(0.01)
+        # patch = self.m_terrain.AddPatch(patch_mat, chrono.CSYSNORM, 600, 600)
+        # patch.SetColor(chrono.ChColor(0.8, 0.8, 1.0))
+        # patch.SetTexture(veh.GetDataFile(
+        #     "terrain/textures/tile4.jpg"), 600, 600)
+        # self.m_terrain.Initialize()
 
         # -------------------------------
         # Reset the terrain
@@ -207,7 +220,7 @@ class off_road_gator(ChronoBaseEnv):
         self.m_terrain = veh.SCMTerrain(self.m_system)
         # Set the SCM parameters
         terrain_params = SCMParameters()
-        terrain_params.InitializeParametersAsHard()
+        terrain_params.InitializeParametersAsSoft()
         terrain_params.SetParameters(self.m_terrain)
         # Enable bulldozing effects
         self.m_terrain.EnableBulldozing(True)
@@ -274,6 +287,7 @@ class off_road_gator(ChronoBaseEnv):
         # Set the driver
         self.m_driver = veh.ChDriver(self.m_vehicle.GetVehicle())
         self.m_driver_inputs = self.m_driver.GetInputs()
+
         # ===============================
         # Add the moving terrrain patches
         # ===============================
@@ -344,8 +358,6 @@ class off_road_gator(ChronoBaseEnv):
         self.m_driver_inputs.m_braking = np.clip(
             braking, self.m_driver_inputs.m_braking - self.m_brakingDelta, self.m_driver_inputs.m_braking + self.m_brakingDelta)
 
-        print(self.m_driver_inputs.m_steering,
-              self.m_driver_inputs.m_throttle, self.m_driver_inputs.m_braking)
         # forward dynamics (since control happens at 10 Hz but dynamics at a higher frenquency same input is applied for 0.1 seconds)
         for i in range(0, self.m_steps_per_control):
             time = self.m_system.GetChTime()
@@ -353,15 +365,19 @@ class off_road_gator(ChronoBaseEnv):
             self.m_terrain.Synchronize(time)
             self.m_vehicle.Synchronize(
                 time, self.m_driver_inputs, self.m_terrain)
-            self.vis.Synchronize(time, self.m_driver_inputs)
+            if (self.m_render_setup):
+                self.vis.Synchronize(time, self.m_driver_inputs)
 
             # Advance the vehicle
             self.m_driver.Advance(self.m_step_size)
             self.m_terrain.Advance(self.m_step_size)
             self.m_vehicle.Advance(self.m_step_size)
-            self.vis.Advance(self.m_step_size)
+            if (self.m_render_setup):
+                self.vis.Advance(self.m_step_size)
             # Sensor update
             self.m_sens_manager.Update()
+
+            print(self.m_system.GetRTF())
 
             self.m_contact_force = self.m_assets.CalcContactForces(
                 self.m_chassis_body, self.m_chassis_collision_box)
@@ -421,8 +437,8 @@ class off_road_gator(ChronoBaseEnv):
             self.vis.BeginScene()
             self.vis.Render()
             self.vis.EndScene()
-        else:
-            raise NotImplementedError
+        # else:
+            # raise NotImplementedError
 
     def get_observation(self):
         """
