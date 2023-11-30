@@ -95,6 +95,7 @@ class off_road_gator(ChronoBaseEnv):
         self.m_chassis = None  # Chassis body of the vehicle
         self.m_chassis_body = None  # Chassis body of the vehicle
         self.m_chassis_collision_box = None  # Chassis collision box of the vehicle
+        self.m_proper_collision = False
         # Initial location and rotation of the vehicle
         self.m_initLoc = None
         self.m_initRot = None
@@ -106,10 +107,10 @@ class off_road_gator(ChronoBaseEnv):
         self.m_steps_per_control = round(
             1 / (self.m_step_size * self.m_control_frequency))
 
-        steering_time = 0.75
+        steering_time = 0.3
         self.m_steeringDelta = (self.m_step_size / steering_time)
 
-        throttle_time = .5
+        throttle_time = .1
         self.m_throttleDelta = (self.m_step_size / throttle_time)
 
         braking_time = 0.3
@@ -121,7 +122,8 @@ class off_road_gator(ChronoBaseEnv):
         self.m_max_terrain_height = 5  # max terrain height
         self.m_terrain_length = 80.0  # size in X direction
         self.m_terrain_width = 80.0  # size in Y direction
-
+        self.m_assets = []
+        self.m_positions = []
         # Sensor manager
         self.m_sens_manager = None  # Sensor manager for the simulation
         self.m_have_camera = False  # Flag to check if camera is present
@@ -174,94 +176,120 @@ class off_road_gator(ChronoBaseEnv):
         # -------------------------------
         # Reset Chrono system
         # -------------------------------
-        # self.m_system = chrono.ChSystemNSC()
-        # self.m_system.Set_G_acc(chrono.ChVectorD(0, 0, -9.81))
+        self.m_system = chrono.ChSystemNSC()
+        self.m_system.Set_G_acc(chrono.ChVectorD(0, 0, -9.81))
         # self.m_system.SetSolverType(chrono.ChSolver.Type_BARZILAIBORWEIN)
         # self.m_system.SetSolverMaxIterations(150)
         # self.m_system.SetMaxPenetrationRecoverySpeed(4.0)
 
         # -------------------------------
+        # Reset the terrain
+        # -------------------------------
+        self.m_isFlat = False
+        terrain_delta = 0.05
+        self.m_isRigid = False
+
+        if self.m_isRigid:
+            self.m_terrain = veh.RigidTerrain(self.m_system)
+            patch_mat = chrono.ChMaterialSurfaceNSC()
+            patch_mat.SetFriction(0.9)
+            patch_mat.SetRestitution(0.01)
+            if (self.m_isFlat):
+                patch = self.m_terrain.AddPatch(
+                    patch_mat, chrono.CSYSNORM, self.m_terrain_length*1.5, self.m_terrain_width*1.5)
+            else:
+                # Initialize the terrain using a bitmap for the height map
+                bitmap_file = os.path.dirname(os.path.realpath(
+                    __file__)) + "/../data/terrain_bitmaps/height_map.bmp"
+
+                # Some bitmap file backup (don't know why this is done in OG code)
+                bitmap_file_backup = os.path.dirname(os.path.realpath(
+                    __file__)) + "/../data/terrain_bitmaps/height_map_backup.bmp"
+
+                generate_random_bitmap(shape=(252, 252), resolutions=[(2, 2)], mappings=[
+                    (-1.5, 1.5)], file_name=bitmap_file)
+                try:
+                    patch = self.m_terrain.AddPatch(
+                        patch_mat, chrono.CSYSNORM, bitmap_file, self.m_terrain_length*1.5, self.m_terrain_width*1.5, self.m_min_terrain_height, self.m_max_terrain_height)
+                except:
+                    print('Corrupt Bitmap File')
+                    patch = self.m_terrain.AddPatch(
+                        patch_mat, chrono.CSYSNORM, bitmap_file_backup, self.m_terrain_length*1.5, self.m_terrain_width*1.5, self.m_min_terrain_height, self.m_max_terrain_height)
+
+            patch.SetTexture(veh.GetDataFile(
+                "terrain/textures/grass.jpg"), self.m_terrain_length*1.5, self.m_terrain_width*1.5)
+            self.m_terrain.Initialize()
+
+        else:
+            # Real deformable terrain - Without mesh viz
+            self.m_terrain = veh.SCMTerrain(self.m_system)
+            # Set the SCM parameters
+            terrain_params = SCMParameters()
+            terrain_params.InitializeParametersAsMid()
+            terrain_params.SetParameters(self.m_terrain)
+            # Enable bulldozing effects
+            self.m_terrain.EnableBulldozing(True)
+            self.m_terrain.SetBulldozingParameters(
+                55,  # angle of friction for erosion of displaced material at the border of the rut
+                1,  # displaced material vs downward pressed material.
+                5,  # number of erosion refinements per timestep
+                10)  # number of concentric vertex selections subject to erosion
+            self.m_terrain.SetPlane(chrono.ChCoordsysD(chrono.ChVectorD(0, -0.5, 0), chrono.Q_from_AngX(
+                -0)))
+
+            if self.m_isFlat:
+                # Initialize the terrain using a flat patch
+                self.m_terrain.Initialize(
+                    self.m_terrain_length * 1.5,  # Size in X direction
+                    self.m_terrain_length * 1.5,  # Size in Y direction
+                    terrain_delta)  # Mesh resolution
+            else:
+                # Initialize the terrain using a bitmap for the height map
+                bitmap_file = os.path.dirname(os.path.realpath(
+                    __file__)) + "/../data/terrain_bitmaps/height_map.bmp"
+
+                # Some bitmap file backup (don't know why this is done in OG code)
+                bitmap_file_backup = os.path.dirname(os.path.realpath(
+                    __file__)) + "/../data/terrain_bitmaps/height_map_backup.bmp"
+
+                generate_random_bitmap(shape=(252, 252), resolutions=[(2, 2)], mappings=[
+                    (-1.5, 1.5)], file_name=bitmap_file)
+
+                try:
+                    self.m_terrain.Initialize(bitmap_file,  # heightmap file (.bmp)
+                                              self.m_terrain_length * 1.5,  # sizeX
+                                              self.m_terrain_width * 1.5,  # sizeY
+                                              self.m_min_terrain_height,  # hMin
+                                              self.m_max_terrain_height,  # hMax
+                                              terrain_delta)  # mesh resolution
+                except Exception:
+                    print('Corrupt Bitmap File')
+                    self.m_terrain.Initialize(bitmap_file_backup,  # heightmap file (.bmp)
+                                              self.m_terrain_length * 1.5,  # sizeX
+                                              self.m_terrain_width * 1.5,  # sizeY
+                                              self.m_min_terrain_height,  # hMin
+                                              self.m_max_terrain_height,  # hMax
+                                              terrain_delta)
+
+        # -------------------------------
         # Reset the vehicle
         # -------------------------------
-        self.m_vehicle = veh.Gator()
+        self.m_vehicle = veh.Gator(self.m_system)
         self.m_vehicle.SetContactMethod(chrono.ChContactMethod_NSC)
         self.m_vehicle.SetChassisCollisionType(
-            veh.CollisionType_NONE)  # No collision for now
+            veh.CollisionType_NONE)  # No chassis collision
         self.m_vehicle.SetChassisFixed(False)
-        self.m_vehicle.SetTireType(veh.TireModelType_TMEASY)
+        # self.m_vehicle.SetTireType(veh.TireModelType_TMEASY)
+        if (self.m_isRigid):
+            self.m_vehicle.SetTireType(veh.TireModelType_TMEASY)
+        else:
+            self.m_vehicle.SetTireType(veh.TireModelType_RIGID)
         self.m_vehicle.SetTireStepSize(self.m_step_size)
+        # Intialize position that depends on terrain
+        gator_theta = self.initialize_gator_pos(seed)
         # Initialize the vehicle position -> get gator_theta to set the goal position
         self.m_vehicle.Initialize()
 
-        # Get Chrono system
-        self.m_system = self.m_vehicle.GetSystem()
-        self.m_system.Set_G_acc(chrono.ChVectorD(0, 0, -9.81))
-        self.m_system.SetSolverType(chrono.ChSolver.Type_BARZILAIBORWEIN)
-        self.m_system.SetSolverMaxIterations(150)
-        self.m_system.SetMaxPenetrationRecoverySpeed(4.0)
-
-        # -------------------------------
-        # Rigid Terrain fall back
-        # -------------------------------
-        # self.m_terrain = veh.RigidTerrain(self.m_system)
-        # patch_mat = chrono.ChMaterialSurfaceNSC()
-        # patch_mat.SetFriction(0.9)
-        # patch_mat.SetRestitution(0.01)
-        # patch = self.m_terrain.AddPatch(patch_mat, chrono.CSYSNORM, 600, 600)
-        # patch.SetColor(chrono.ChColor(0.8, 0.8, 1.0))
-        # patch.SetTexture(veh.GetDataFile(
-        #     "terrain/textures/tile4.jpg"), 600, 600)
-        # self.m_terrain.Initialize()
-
-        # -------------------------------
-        # Reset the terrain
-        # -------------------------------
-        # Real deformable terrain - Without mesh viz
-        self.m_terrain = veh.SCMTerrain(self.m_system)
-        # Set the SCM parameters
-        terrain_params = SCMParameters()
-        terrain_params.InitializeParametersAsSoft()
-        terrain_params.SetParameters(self.m_terrain)
-        # Enable bulldozing effects
-        self.m_terrain.EnableBulldozing(True)
-        self.m_terrain.SetBulldozingParameters(
-            55,  # angle of friction for erosion of displaced material at the border of the rut
-            1,  # displaced material vs downward pressed material.
-            5,  # number of erosion refinements per timestep
-            10)  # number of concentric vertex selections subject to erosion
-
-        # Initialize the terrain using a bitmap for the height map
-        bitmap_file = os.path.dirname(os.path.realpath(
-            __file__)) + "/../data/terrain_bitmaps/height_map.bmp"
-
-        # Some bitmap file backup (don't know why this is done in OG code)
-        bitmap_file_backup = os.path.dirname(os.path.realpath(
-            __file__)) + "/../data/terrain_bitmaps/height_map_backup.bmp"
-
-        generate_random_bitmap(shape=(252, 252), resolutions=[(2, 2)], mappings=[
-                               (-1.5, 1.5)], file_name=bitmap_file)
-
-        try:
-
-            self.m_terrain.Initialize(bitmap_file,  # heightmap file (.bmp)
-                                      self.m_terrain_length * 1.5,  # sizeX
-                                      self.m_terrain_width * 1.5,  # sizeY
-                                      self.m_min_terrain_height,  # hMin
-                                      self.m_max_terrain_height,  # hMax
-                                      0.05)  # mesh resolution
-        except Exception:
-            print('Corrupt Bitmap File')
-            self.m_terrain.Initialize(bitmap_file_backup,  # heightmap file (.bmp)
-                                      self.m_terrain_length * 1.5,  # sizeX
-                                      self.m_terrain_width * 1.5,  # sizeY
-                                      self.m_min_terrain_height,  # hMin
-                                      self.m_max_terrain_height,  # hMax
-                                      0.05)
-        self.m_terrain.SetPlane(chrono.ChCoordsysD(chrono.ChVectorD(0, -0.5, 0), chrono.Q_from_AngX(
-            -0)))
-
-        # Intialize position that depends on terrain
-        gator_theta = self.initialize_gator_pos(seed)
         # If we are visualizing, get mesh based viz
         if self.m_play_mode:
             self.m_vehicle.SetChassisVisualizationType(
@@ -281,8 +309,8 @@ class off_road_gator(ChronoBaseEnv):
         self.m_vehicle.SetSteeringVisualizationType(
             veh.VisualizationType_PRIMITIVES)
         self.m_chassis_body = self.m_vehicle.GetChassisBody()
-        self.m_chassis_collision_box = chrono.ChBoxShape(
-            3, 2, 0.2)  # Magic numbers from original code
+        # self.m_chassis_collision_box = chrono.ChBoxShape(
+        #     3, 2, 0.2)  # Magic numbers from original code
 
         # Set the driver
         self.m_driver = veh.ChDriver(self.m_vehicle.GetVehicle())
@@ -291,17 +319,23 @@ class off_road_gator(ChronoBaseEnv):
         # ===============================
         # Add the moving terrrain patches
         # ===============================
-        wheel_range = 0.5
+        if (self.m_isRigid == False):
+            self.m_terrain.AddMovingPatch(self.m_chassis_body, chrono.ChVectorD(
+                0, 0, 0), chrono.ChVectorD(5, 3, 1))
+            # Set a texture for the terrain
+            self.m_terrain.SetTexture(veh.GetDataFile(
+                "terrain/textures/grass.jpg"), self.m_terrain_length*2, self.m_terrain_width*2)
 
-        for axle in self.m_vehicle.GetVehicle().GetAxles():
-            for wheel in axle.GetWheels():
-                self.m_terrain.AddMovingPatch(wheel.GetSpindle(), chrono.ChVectorD(
-                    0, 0, 0), chrono.ChVectorD(0.5, 2*wheel_range, 2*wheel_range))
+        # for axle in self.m_vehicle.GetVehicle().GetAxles():
+        #     for wheel in axle.GetWheels():
+        #         self.m_terrain.AddMovingPatch(wheel.GetSpindle(), chrono.ChVectorD(
+        #             0, 0, 0), chrono.ChVectorD(0.5, 2*wheel_range, 2*wheel_range))
 
         # Set some vis
-        self.m_terrain.SetPlotType(
-            veh.SCMTerrain.PLOT_PRESSURE, 0, 30000.2)
-        self.m_terrain.GetMesh().SetWireframe(True)
+        # self.m_terrain.SetPlotType(
+        #     veh.SCMTerrain.PLOT_PRESSURE, 0, 30000.2)
+
+        # self.m_terrain.SetMeshWireframe(True)
 
         # -------------------------------
         # Set the goal point
@@ -311,7 +345,7 @@ class off_road_gator(ChronoBaseEnv):
         # -------------------------------
         # Reset the obstacles
         # -------------------------------
-        self.add_obstacles()
+        self.add_obstacles(proper_collision=False)
 
         # -------------------------------
         # Initialize the sensors
@@ -365,23 +399,25 @@ class off_road_gator(ChronoBaseEnv):
             self.m_terrain.Synchronize(time)
             self.m_vehicle.Synchronize(
                 time, self.m_driver_inputs, self.m_terrain)
-            if (self.m_render_setup):
+            if (self.m_render_setup and self.render_mode == 'follow'):
                 self.vis.Synchronize(time, self.m_driver_inputs)
 
             # Advance the vehicle
             self.m_driver.Advance(self.m_step_size)
             self.m_terrain.Advance(self.m_step_size)
             self.m_vehicle.Advance(self.m_step_size)
-            if (self.m_render_setup):
+            if (self.m_render_setup and self.render_mode == 'follow'):
                 self.vis.Advance(self.m_step_size)
+
+            self.m_system.DoStepDynamics(self.m_step_size)
             # Sensor update
             self.m_sens_manager.Update()
 
-            print(self.m_system.GetRTF())
+            # print(self.m_system.GetRTF())
 
-            self.m_contact_force = self.m_assets.CalcContactForces(
-                self.m_chassis_body, self.m_chassis_collision_box)
-            if self.m_contact_force > 0:
+            contact = self.m_assets.CheckContact(
+                self.m_chassis_body, proper_collision=self.m_proper_collision)
+            if contact:
                 break
         # Get the observation
         self.m_observation = self.get_observation()
@@ -403,6 +439,8 @@ class off_road_gator(ChronoBaseEnv):
         # Add visualization - only if we want to see "human" POV
         # ------------------------------------------------------
         if mode == 'human':
+            self.render_mode = 'human'
+
             if self.m_render_setup == False:
                 self.vis = chronoirr.ChVisualSystemIrrlicht()
                 self.vis.AttachSystem(self.m_system)
@@ -412,7 +450,7 @@ class off_road_gator(ChronoBaseEnv):
                 self.vis.Initialize()
                 self.vis.AddSkyBox()
                 self.vis.AddCamera(chrono.ChVectorD(
-                    0, 0, 32), chrono.ChVectorD(0, 0, 1))
+                    0, 0, 100), chrono.ChVectorD(0, 0, 1))
                 self.vis.AddTypicalLights()
                 self.vis.AddLightWithShadow(chrono.ChVectorD(
                     1.5, -2.5, 5.5), chrono.ChVectorD(0, 0, 0.5), 3, 4, 10, 40, 512)
@@ -422,6 +460,7 @@ class off_road_gator(ChronoBaseEnv):
             self.vis.Render()
             self.vis.EndScene()
         elif mode == 'follow':
+            self.render_mode = 'follow'
             if self.m_render_setup == False:
                 self.vis = veh.ChWheeledVehicleVisualSystemIrrlicht()
                 self.vis.SetWindowTitle('Gator in the wild')
@@ -533,14 +572,14 @@ class off_road_gator(ChronoBaseEnv):
             print('--------------------------------------------------------------')
             self.m_reward += 2500
             self.m_debug_reward += self.m_reward
-            self._terminated = True
-            self._success = True
+            self.m_terminated = True
+            self.m_success = True
 
         # If we have exceeded the max time -> Terminate
         if self.m_system.GetChTime() > self.m_max_time:
             print('--------------------------------------------------------------')
             print('Time out')
-            print('Initial position: ', self._initpos)
+            print('Initial position: ', self.m_initLoc)
             # dist = np.linalg.norm(self.observation[:3] - self.goal)
             dist = self.m_vector_to_goal.Length()
             print('Final position of Gator: ',
@@ -554,35 +593,36 @@ class off_road_gator(ChronoBaseEnv):
             print('Reward: ', self.m_reward)
             print('Accumulated Reward: ', self.m_debug_reward)
             print('--------------------------------------------------------------')
-            self._terminated = True
+            self.m_terminated = True
 
     def _is_truncated(self):
         """
         Check if we have crashed or fallen off terrain
         """
-        collision = not (self.m_contact_force == 0)
+        collision = self.m_assets.CheckContact(
+            self.m_chassis_body, proper_collision=self.m_proper_collision)
         if collision:
             self.m_reward -= 250
             print('--------------------------------------------------------------')
-            print('Crashed')
+            print(f'Crashed')
             print('--------------------------------------------------------------')
             self.m_debug_reward += self.m_reward
-            self._truncated = True
+            self.m_truncated = True
         if (self._fallen_off_terrain()):
             self.m_reward -= 250
             print('--------------------------------------------------------------')
             print('Fallen off terrain')
             print('--------------------------------------------------------------')
             self.m_debug_reward += self.m_reward
-            self._truncated = True
+            self.m_truncated = True
 
     def _fallen_off_terrain(self):
         """
         Check if we have fallen off the terrain
         For now just checks if the CG of the vehicle is within the rectangle bounds with some tolerance
         """
-        terrain_length_tolerance = self.m_terrain_length/2
-        terrain_width_tolerance = self.m_terrain_width/2
+        terrain_length_tolerance = self.m_terrain_length
+        terrain_width_tolerance = self.m_terrain_width
 
         vehicle_is_outside_terrain = abs(self.m_vehicle_pos.x) > terrain_length_tolerance or abs(
             self.m_vehicle_pos.y) > terrain_width_tolerance
@@ -606,6 +646,8 @@ class off_road_gator(ChronoBaseEnv):
         self.m_initLoc = chrono.ChVectorD(x, y, z)
         self.m_initRot = chrono.Q_from_AngZ(ang)
 
+        self.m_vehicle.SetInitPosition(
+            chrono.ChCoordsysD(self.m_initLoc, self.m_initRot))
         return theta
 
     def set_goal(self, gator_theta, seed):
@@ -652,29 +694,47 @@ class off_road_gator(ChronoBaseEnv):
 
         self.m_system.Add(goal_body)
 
-    def add_obstacles(self):
-        """
-        Add obstacles to the terrain
-        """
-        n = 10
-        b1 = 0  # Bush1
-        b2 = 0  # Bush2
-        r1 = n  # Rock1
-        r2 = n  # Rock2
-        r3 = n  # Rock3
-        r4 = n  # Rock4
-        r5 = n  # Rock5
-        t1 = 0  # Tree1
-        t2 = 0  # Tree2
-        t3 = 0  # Tree3
-        c = 0  # Cottage
+    def add_obstacles(self, proper_collision=False):
+        """Add obstacles to the terrain using asset utilities"""
+        self.m_proper_collision = proper_collision
 
-        self.m_assets = AssetList(b1, b2, r1, r2, r3, r4, r5, t1, t2, t3, c)
-        # Clear the old obstacle postions
-        self.m_assets.Clear()
-        # Set the new obstacle positions
-        self.m_assets.RandomlyPositionAssets(self.m_system, self.m_initLoc, self.m_goal, self.m_terrain,
-                                             self.m_terrain_length * 1.5, self.m_terrain_width * 1.5, should_scale=False)
+        if (self.m_proper_collision):
+            # Create baseline type of rock assets
+            rock1 = Asset(visual_shape_path="sensor/offroad/rock1.obj",
+                          scale=1, bounding_box=chrono.ChVectorD(3.18344, 3.62827, 0))
+            rock2 = Asset(visual_shape_path="sensor/offroad/rock2.obj",
+                          scale=1, bounding_box=chrono.ChVectorD(4.01152, 2.64947, 0))
+            rock3 = Asset(visual_shape_path="sensor/offroad/rock3.obj",
+                          scale=1, bounding_box=chrono.ChVectorD(2.53149, 2.48862, 0))
+            rock4 = Asset(visual_shape_path="sensor/offroad/rock4.obj",
+                          scale=1, bounding_box=chrono.ChVectorD(2.4181, 4.47276, 0))
+            rock5 = Asset(visual_shape_path="sensor/offroad/rock5.obj",
+                          scale=1, bounding_box=chrono.ChVectorD(3.80205, 2.56996, 0))
+        else:  # If there is no proper collision then collision just based on distance
+            # Create baseline type of rock assets
+            rock1 = Asset(visual_shape_path="sensor/offroad/rock1.obj",
+                          scale=1)
+            rock2 = Asset(visual_shape_path="sensor/offroad/rock2.obj",
+                          scale=1)
+            rock3 = Asset(visual_shape_path="sensor/offroad/rock3.obj",
+                          scale=1)
+            rock4 = Asset(visual_shape_path="sensor/offroad/rock4.obj",
+                          scale=1)
+            rock5 = Asset(visual_shape_path="sensor/offroad/rock5.obj",
+                          scale=1)
+
+        # Add these Assets to the simulationAssets
+        self.m_assets = SimulationAssets(
+            self.m_system, self.m_terrain, self.m_terrain_length, self.m_terrain_width)
+
+        self.m_assets.AddAsset(rock1, number=10)
+        # self.m_assets.AddAsset(rock2, number=10)
+        # self.m_assets.AddAsset(rock3, number=10)
+        # self.m_assets.AddAsset(rock4, number=2)
+        # self.m_assets.AddAsset(rock5, number=2)
+
+        # Randomly position these assets and add them to the simulation
+        self.m_assets.RandomlyPositionAssets(self.m_goal, self.m_chassis_body)
 
     def add_sensors(self, camera=True, gps=True, imu=True):
         """
