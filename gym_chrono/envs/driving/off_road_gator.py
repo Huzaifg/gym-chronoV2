@@ -11,10 +11,19 @@
 # ========================================================================================================
 # Authors: Huzaifa Unjhawala (refactored from original code by Simone Benatti, Aaron Young, Asher Elmquist)
 # ========================================================================================================
-
-from typing import Any
-import pychrono as chrono
+import gymnasium as gym
+import numpy as np
+import math
+import os
+from gym_chrono.envs.utils.terrain_utils import SCMParameters
+from gym_chrono.envs.utils.perlin_bitmap_generator import generate_random_bitmap
+from gym_chrono.envs.utils.asset_utils import *
+from gym_chrono.envs.utils.utils import CalcInitialPose, chVector_to_npArray, npArray_to_chVector, SetChronoDataDirectories
+from gym_chrono.envs.ChronoBase import ChronoBaseEnv
 import pychrono.vehicle as veh
+import pychrono as chrono
+from typing import Any
+
 try:
     from pychrono import irrlicht as chronoirr
 except:
@@ -30,20 +39,10 @@ except:
     print('Could not import ChronoIrrlicht')
 
 
-from gym_chrono.envs.ChronoBase import ChronoBaseEnv
-
 # Bunch of utilities required for the environment
-from gym_chrono.envs.utils.utils import CalcInitialPose, chVector_to_npArray, npArray_to_chVector, SetChronoDataDirectories
-from gym_chrono.envs.utils.asset_utils import *
-from gym_chrono.envs.utils.perlin_bitmap_generator import generate_random_bitmap
-from gym_chrono.envs.utils.terrain_utils import SCMParameters
 # Standard Python imports
-import os
-import math
-import numpy as np
 
 # Gymnasium imports
-import gymnasium as gym
 
 
 class off_road_gator(ChronoBaseEnv):
@@ -67,16 +66,20 @@ class off_road_gator(ChronoBaseEnv):
 
         # Set camera frame as this is the observation
         self.m_camera_width = 80
-        self.m_camera_height = 80
+        self.m_camera_height = 45
 
         # Observation space has 2 components
         # 1. Camera image (RGB) of size (m_camera_width, m_camera_height)
         # 2. Vehicle state relative to the goal of size (5,)
-        self.observation_space = gym.spaces.Tuple((
-            gym.spaces.Box(low=0, high=255, shape=(
-                self.m_camera_width, self.m_camera_height, 3), dtype=np.uint8),
-            gym.spaces.Box(low=-100, high=100, shape=(5,), dtype=np.float64)))
+        # self.observation_space = gym.spaces.Tuple((
+        #     gym.spaces.Box(low=0, high=255, shape=(
+        #         self.m_camera_height, self.m_camera_width, 3), dtype=np.uint8),
+        #     gym.spaces.Box(low=-100, high=100, shape=(5,), dtype=np.float64)))
 
+        self.observation_space = gym.spaces.Dict({
+            "image": gym.spaces.Box(low=0, high=255, shape=(
+                3, self.m_camera_height, self.m_camera_width), dtype=np.uint8),
+            "data": gym.spaces.Box(low=-100, high=100, shape=(5,), dtype=np.float32)})
         # Action space is the steering, throttle and braking where
         # Steering is between -1 and 1
         # Throttle is between 0 and 1
@@ -185,10 +188,18 @@ class off_road_gator(ChronoBaseEnv):
         # -------------------------------
         # Reset the terrain
         # -------------------------------
-        self.m_isFlat = False
+        self.m_isFlat = True
         terrain_delta = 0.05
-        self.m_isRigid = False
+        self.m_isRigid = True
 
+        # texture_rand = random.randint(0, 3)
+
+        texture_file_options = [
+            "terrain/textures/grass.jpg", "terrain/textures/dirt.jpg", "terrain/textures/Gravel034_1K-JPG/Gravel034_1K_Color.jpg"]
+
+        # texture_file = texture_file_options[random.randint(
+        #     0, len(texture_file_options) - 1)]
+        texture_file = texture_file_options[0]
         if self.m_isRigid:
             self.m_terrain = veh.RigidTerrain(self.m_system)
             patch_mat = chrono.ChMaterialSurfaceNSC()
@@ -217,7 +228,7 @@ class off_road_gator(ChronoBaseEnv):
                         patch_mat, chrono.CSYSNORM, bitmap_file_backup, self.m_terrain_length*1.5, self.m_terrain_width*1.5, self.m_min_terrain_height, self.m_max_terrain_height)
 
             patch.SetTexture(veh.GetDataFile(
-                "terrain/textures/grass.jpg"), self.m_terrain_length*1.5, self.m_terrain_width*1.5)
+                texture_file), self.m_terrain_length*1.5, self.m_terrain_width*1.5)
             self.m_terrain.Initialize()
 
         else:
@@ -324,7 +335,7 @@ class off_road_gator(ChronoBaseEnv):
                 0, 0, 0), chrono.ChVectorD(5, 3, 1))
             # Set a texture for the terrain
             self.m_terrain.SetTexture(veh.GetDataFile(
-                "terrain/textures/grass.jpg"), self.m_terrain_length*2, self.m_terrain_width*2)
+                texture_file), self.m_terrain_length*2, self.m_terrain_width*2)
 
         # for axle in self.m_vehicle.GetVehicle().GetAxles():
         #     for wheel in axle.GetWheels():
@@ -370,7 +381,6 @@ class off_road_gator(ChronoBaseEnv):
 
         self.m_terminated = False
         self.m_truncated = False
-
         return self.m_observation, {}
 
     def step(self, action):
@@ -412,8 +422,6 @@ class off_road_gator(ChronoBaseEnv):
             self.m_system.DoStepDynamics(self.m_step_size)
             # Sensor update
             self.m_sens_manager.Update()
-
-            # print(self.m_system.GetRTF())
 
             contact = self.m_assets.CheckContact(
                 self.m_chassis_body, proper_collision=self.m_proper_collision)
@@ -540,7 +548,10 @@ class off_road_gator(ChronoBaseEnv):
         observation_array = np.array(
             [local_delX, local_delY, vehicle_heading, target_heading_to_goal, vehicle_speed])
 
-        return (rgba, observation_array)
+        # Flip rgba to (3, height, width) from (height, width, 3)
+        rgba = np.transpose(rgba, (2, 0, 1))
+        obs_dict = {"image": rgba, "data": observation_array}
+        return obs_dict
 
     def get_reward(self):
         # Compute the progress made
@@ -727,9 +738,13 @@ class off_road_gator(ChronoBaseEnv):
         self.m_assets = SimulationAssets(
             self.m_system, self.m_terrain, self.m_terrain_length, self.m_terrain_width)
 
-        self.m_assets.AddAsset(rock1, number=10)
-        # self.m_assets.AddAsset(rock2, number=10)
-        # self.m_assets.AddAsset(rock3, number=10)
+        rock1_random = random.randint(0, 10)
+        rock2_random = random.randint(0, 10)
+        rock3_random = random.randint(0, 10)
+
+        self.m_assets.AddAsset(rock1, number=rock1_random)
+        self.m_assets.AddAsset(rock2, number=rock2_random)
+        self.m_assets.AddAsset(rock3, number=rock3_random)
         # self.m_assets.AddAsset(rock4, number=2)
         # self.m_assets.AddAsset(rock5, number=2)
 
@@ -758,9 +773,9 @@ class off_road_gator(ChronoBaseEnv):
                 cam_frame,  # offset pose
                 self.m_camera_width,  # image width
                 self.m_camera_height,  # image height
-                chrono.CH_C_PI / 2,  # FOV
+                chrono.CH_C_PI / 3,  # FOV
                 # supersampling factor (higher improves quality of the image)
-                6
+                5
             )
             self.m_camera.SetName("Camera Sensor")
             self.m_camera.PushFilter(sens.ChFilterRGBA8Access())
@@ -810,3 +825,9 @@ class off_road_gator(ChronoBaseEnv):
 
     def set_play_mode(self):
         self.m_play_mode = True
+
+    def close(self):
+        del self
+
+    def __del__(self):
+        del self.m_sens_manager
