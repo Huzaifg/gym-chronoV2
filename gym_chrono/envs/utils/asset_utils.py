@@ -23,7 +23,7 @@ class Asset():
         self.collision_shape_path = collision_shape_path
 
         # Intialize a random material
-        self.material = chrono.ChMaterialSurfaceSMC()
+        self.material = chrono.ChMaterialSurfaceNSC()
         # initialize the body
         self.body = chrono.ChBodyAuxRef()
         # set body as fixed
@@ -36,7 +36,7 @@ class Asset():
         visual_mesh.Transform(chrono.ChVectorD(0, 0, 0),
                               chrono.ChMatrix33D(scale))
         # Add this mesh to the visual shape
-        self.visual_shape = chrono.ChTriangleMeshShape()
+        self.visual_shape = chrono.ChVisualShapeTriangleMesh()
         self.visual_shape.SetMesh(visual_mesh)
         # Add visual shape to the mesh body
         self.body.AddVisualShape(self.visual_shape)
@@ -49,11 +49,12 @@ class Asset():
                 self.body.SetCollide(False)
                 self.collide_flag = False
             else:
-                self.body.GetCollisionModel().ClearModel()
+                # self.body.GetCollisionModel().ClearModel()
                 size = bounding_box * scale
-                self.body.GetCollisionModel().AddBox(self.material, bounding_box.x,
-                                                     bounding_box.y, bounding_box.z)
-                self.body.GetCollisionModel().BuildModel()
+                material = chrono.ChMaterialSurfaceNSC()
+                collision_shape = chrono.ChCollisionShapeBox(
+                    material, size.x, size.y, 5)
+                self.body.AddCollisionShape(collision_shape)
                 self.body.SetCollide(True)
                 self.collide_flag = True
         else:
@@ -63,11 +64,10 @@ class Asset():
             ).CreateFromWavefrontFile(collision_shape_obj, False, False)
             collision_mesh.Transform(chrono.ChVectorD(0, 0, 0),
                                      chrono.ChMatrix33D(scale))
+            collision_shape = chrono.ChCollisionShapeTriangleMesh(self.material, collision_mesh,
+                                                                  True, True, chrono.ChVectorD(0, 0, 0), chrono.ChMatrix33D(1))
+            self.body.AddCollisionShape(collision_shape)
             # Update the collision model
-            self.body.GetCollisionModel().ClearModel()
-            self.body.GetCollisionModel().AddTriangleMesh(self.material, collision_mesh,
-                                                          True, True, chrono.ChVectorD(0, 0, 0), chrono.ChMatrix33D(1))
-            self.body.GetCollisionModel().BuildModel()
             self.body.SetCollide(True)
             self.collide_flag = True
 
@@ -156,7 +156,7 @@ class SimulationAssets():
         if proper_collision:
             # Check for collision using the collision model
             for asset in self.assets_list:
-                if (asset.GetContactForce().Length() > 0):
+                if (asset.body.GetContactForce().Length() > 0):
                     return 1
             return 0
         else:

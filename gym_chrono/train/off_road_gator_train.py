@@ -27,6 +27,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import HParam
@@ -69,8 +70,8 @@ class TensorboardCallback(BaseCallback):
         )
 
     def _on_step(self) -> bool:
-        self.logger.record(
-            'reward', self.training_env.get_attr('m_debug_reward')[0])
+        # self.logger.record(
+        #     'reward', self.training_env.get_attr('m_debug_reward')[0])
 
         return True
 
@@ -100,7 +101,7 @@ if __name__ == '__main__':
     env_single = off_road_gator()
     ####### PARALLEL ##################
 
-    num_cpu = 1
+    num_cpu = 6
     # Set to make an update after the end of 2 episodes (20 s each)- In total we will have 400 * 12 data points
     n_steps = 20 * 2 * 10
     # Set mini batch is the experiences so that 1/4th  batch is consumed to make an update
@@ -113,8 +114,12 @@ if __name__ == '__main__':
     # set up logger
     new_logger = configure(log_path, ["stdout", "csv", "tensorboard"])
     # Vectorized envieroment
-    env = SubprocVecEnv([make_env(i)
-                        for i in range(num_cpu)],  start_method='fork')
+    # env = DummyVecEnv([make_env(i)
+    #                    for i in range(num_cpu)])
+    # env = SubprocVecEnv([make_env(i)
+    #                      for i in range(num_cpu)])
+    env = make_vec_env(env_id=make_env(0), n_envs=num_cpu,
+                       vec_env_cls=SubprocVecEnv)
     policy_kwargs = dict(
         features_extractor_class=CustomCombinedExtractor,
         features_extractor_kwargs={'features_dim': 10},
