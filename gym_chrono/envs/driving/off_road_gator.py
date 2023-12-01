@@ -85,7 +85,7 @@ class off_road_gator(ChronoBaseEnv):
         # Throttle is between 0 and 1
         # Braking is between 0 and 1
         self.action_space = gym.spaces.Box(
-            low=np.array([-1.0, 0, 0]), high=np.array([1.0, 1.0, 1.0]), shape=(3,), dtype=np.float64)
+            low=np.array([-1.0, 0, 0]), high=np.array([1.0, 1.0, 1.0]), shape=(3,), dtype=np.float32)
         # -------------------------------
         # Simulation specific class variables
         # -------------------------------
@@ -549,10 +549,10 @@ class off_road_gator(ChronoBaseEnv):
         vehicle_speed = self.m_chassis_body.GetPos_dt().Length()
 
         observation_array = np.array(
-            [local_delX, local_delY, vehicle_heading, target_heading_to_goal, vehicle_speed])
+            [local_delX, local_delY, vehicle_heading, target_heading_to_goal, vehicle_speed]).astype(np.float32)
 
         # Flip rgba to (3, height, width) from (height, width, 3)
-        rgba = np.transpose(rgba, (2, 0, 1))
+        rgba = np.transpose(rgba, (2, 0, 1)).astype(np.uint8)
         obs_dict = {"image": rgba, "data": observation_array}
         return obs_dict
 
