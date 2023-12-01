@@ -181,6 +181,8 @@ class off_road_gator(ChronoBaseEnv):
         # -------------------------------
         self.m_system = chrono.ChSystemNSC()
         self.m_system.Set_G_acc(chrono.ChVectorD(0, 0, -9.81))
+        self.m_system.SetCollisionSystemType(
+            chrono.ChCollisionSystem.Type_BULLET)
         # self.m_system.SetSolverType(chrono.ChSolver.Type_BARZILAIBORWEIN)
         # self.m_system.SetSolverMaxIterations(150)
         # self.m_system.SetMaxPenetrationRecoverySpeed(4.0)
@@ -288,7 +290,7 @@ class off_road_gator(ChronoBaseEnv):
         self.m_vehicle = veh.Gator(self.m_system)
         self.m_vehicle.SetContactMethod(chrono.ChContactMethod_NSC)
         self.m_vehicle.SetChassisCollisionType(
-            veh.CollisionType_NONE)  # No chassis collision
+            veh.CollisionType_NONE)
         self.m_vehicle.SetChassisFixed(False)
         # self.m_vehicle.SetTireType(veh.TireModelType_TMEASY)
         if (self.m_isRigid):
@@ -508,6 +510,7 @@ class off_road_gator(ChronoBaseEnv):
             else:
                 rgba = np.zeros((self.m_camera_height, self.m_camera_width, 3))
         else:
+            # rgba = np.zeros((self.m_camera_height, self.m_camera_width, 3))
             raise Exception(
                 'Camera not present - This demo needs camera setup')
 
