@@ -17,7 +17,7 @@ if __name__ == '__main__':
         env = off_road_gator(render_mode='agent_pov')
     else:
         env = off_road_gator()
-    # check_env(env)
+    check_env(env)
     # Set the mode to render for nice viz
     env.set_play_mode()
     obs, _ = env.reset()

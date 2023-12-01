@@ -102,8 +102,8 @@ if __name__ == '__main__':
     ####### PARALLEL ##################
 
     num_cpu = 6
-    # Set to make an update after the end of 2 episodes (20 s each)- In total we will have 400 * 12 data points
-    n_steps = 20 * 2 * 10
+    # Set to make an update after the end of 4 episodes (20 s each)- In total we will have 400 * 12 data points
+    n_steps = 20 * 4 * 10
     # Set mini batch is the experiences so that 1/4th  batch is consumed to make an update
     batch_size = n_steps // 4
 

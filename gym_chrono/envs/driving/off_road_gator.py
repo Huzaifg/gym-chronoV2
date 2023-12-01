@@ -82,10 +82,10 @@ class off_road_gator(ChronoBaseEnv):
             "data": gym.spaces.Box(low=-100, high=100, shape=(5,), dtype=np.float32)})
         # Action space is the steering, throttle and braking where
         # Steering is between -1 and 1
-        # Throttle is between 0 and 1
-        # Braking is between 0 and 1
+        # Throttle is between -1 and 1, negative is braking
+        # This is done to aide training - part of recommende rl tips to have symmetric action space
         self.action_space = gym.spaces.Box(
-            low=np.array([-1.0, 0, 0]), high=np.array([1.0, 1.0, 1.0]), shape=(3,), dtype=np.float32)
+            low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), shape=(2,), dtype=np.float32)
         # -------------------------------
         # Simulation specific class variables
         # -------------------------------
@@ -376,7 +376,7 @@ class off_road_gator(ChronoBaseEnv):
         # -------------------------------
         self.m_observation = self.get_observation()
         self.m_old_distance = self.m_vector_to_goal.Length()
-        self.m_old_action = np.zeros((3,))
+        self.m_old_action = np.zeros((2,))
         self.m_contact_force = 0
         self.m_debug_reward = 0
         self.m_render_setup = False
@@ -390,8 +390,13 @@ class off_road_gator(ChronoBaseEnv):
         Gator takes a step in the environment - Frequency by default is 10 Hz
         """
         steering = action[0]
-        throttle = action[1]
-        braking = action[2]
+        # Negative throttle is braking
+        if (action[1] < 0):
+            throttle = 0
+            braking = -action[1]
+        else:
+            throttle = action[1]
+            braking = 0
 
         # This is used in the reward function
         self.m_action = action
@@ -557,6 +562,9 @@ class off_road_gator(ChronoBaseEnv):
         return obs_dict
 
     def get_reward(self):
+        """
+        Not using delta action for now
+        """
         # Compute the progress made
         progress_scale = 1.  # coefficient for scaling progress reward
         delta_action_scale = 0.5  # coefficient for scaling delta action reward
@@ -564,13 +572,13 @@ class off_road_gator(ChronoBaseEnv):
         # The progress made with the last action
         progress = self.m_old_distance - distance
 
-        delta_action = np.linalg.norm(
-            np.array(self.m_action) - np.array(self.m_old_action))
+        # delta_action = np.linalg.norm(
+        #     np.array(self.m_action) - np.array(self.m_old_action))
 
         self.m_old_distance = distance
         self.m_old_action = self.m_action
 
-        return (progress_scale * progress - delta_action_scale * delta_action)
+        return (progress_scale * progress)
 
     def _is_terminated(self):
         """
