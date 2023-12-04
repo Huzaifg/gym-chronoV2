@@ -73,20 +73,18 @@ class quadruped_walk(ChronoBaseEnv):
         self.system = None  # Chrono system set in reset method
         self.ground = None  # Ground body set in reset method
         self.unitree = None  # Robot set in reset method
-
-        self.x_obs = None
-        self.y_obs = None
-
-        self._initpos = chrono.ChVectorD(
-            0.0, 0.0, 0.0)  # Robot initial position
+   
         # Frequncy in which we apply control
-        self._control_frequency = 10
+        self._control_frequency = 20
         # Dynamics timestep
         self._step_size = 5e-4
+        self._sim_time = 0.0
         # Number of steps dynamics has to take before we apply control
         self._steps_per_control = round(
             1 / (self._step_size * self._control_frequency))
         self.vehicle_pos = None
+        
+        self._prev_pos = None
 
         # ---------------------------------
         # Gym Environment variables
@@ -106,6 +104,9 @@ class quadruped_walk(ChronoBaseEnv):
         self._render_setup = False
 
     def reset(self, seed=None, options=None):
+        self._prev_pos = None
+        
+        
         # -----------------------------
         # Set up system with collision
         # -----------------------------
@@ -152,8 +153,28 @@ class quadruped_walk(ChronoBaseEnv):
         """
         Take a step in the environment - Frequency by default is 10 Hz.
         """
+        
+        self._sim_time = self.system.GetChTime()
+    
+        
+        # Apply the actions
+        self.unitree.SetHipMotorPos(0, action[0], self._sim_time)
+        self.unitree.SetHipMotorPos(1, action[1], self._sim_time)
+        self.unitree.SetHipMotorPos(2, action[2], self._sim_time)
+        self.unitree.SetHipMotorPos(3, action[3], self._sim_time)
+        
+        self.unitree.SetThighMotorPos(0, action[4], self._sim_time)
+        self.unitree.SetThighMotorPos(1, action[5], self._sim_time)
+        self.unitree.SetThighMotorPos(2, action[6], self._sim_time)
+        self.unitree.SetThighMotorPos(3, action[7], self._sim_time)
+        
+        self.unitree.SetCalfMotorPos(0, action[8], self._sim_time)
+        self.unitree.SetCalfMotorPos(1, action[9], self._sim_time)
+        self.unitree.SetCalfMotorPos(2, action[10], self._sim_time)
+        self.unitree.SetCalfMotorPos(3, action[11], self._sim_time)
 
         for i in range(self._steps_per_control):
+            self._sim_time = self.system.GetChTime()
             self.system.DoStepDynamics(self._step_size)
 
         # Get the observation
@@ -198,21 +219,64 @@ class quadruped_walk(ChronoBaseEnv):
             raise NotImplementedError
 
     def get_reward(self):
-        reward = 0
+        reward = 0.0
+        
+        if self._prev_pos is None:
+            reward = self.unitree.GetTrunkBody().GetPos().x * 10
+            self._prev_pos = self.unitree.GetTrunkBody().GetPos()
+        else:
+            reward = abs(self.unitree.GetTrunkBody().GetPos().x - self._prev_pos.x) * 10
+        
         return reward
 
     def _is_terminated(self):
+        
+        if self._sim_time > self._max_time:
+            self._terminated = True
 
         self._terminated = False
 
     def _is_truncated(self):
+        
+        if self.unitree.GetTrunkBody().GetPos().z < 0.2:
+            self._truncated = True
+            self.reward -= 500
+            self._debug_reward -= 500
 
         self._truncated = False
 
 
     def get_observation(self):
         observation = np.zeros(18)
-
+        
+        # Get current motor positions
+        observation[0] = self.unitree.GetHipMotorPos(0, self._sim_time)
+        observation[1] = self.unitree.GetHipMotorPos(1, self._sim_time)
+        observation[2] = self.unitree.GetHipMotorPos(2, self._sim_time)
+        observation[3] = self.unitree.GetHipMotorPos(3, self._sim_time)
+        
+        observation[4] = self.unitree.GetThighMotorPos(0, self._sim_time)
+        observation[5] = self.unitree.GetThighMotorPos(1, self._sim_time)
+        observation[6] = self.unitree.GetThighMotorPos(2, self._sim_time)
+        observation[7] = self.unitree.GetThighMotorPos(3, self._sim_time)
+        
+        observation[8] = self.unitree.GetCalfMotorPos(0, self._sim_time)
+        observation[9] = self.unitree.GetCalfMotorPos(1, self._sim_time)
+        observation[10] = self.unitree.GetCalfMotorPos(2, self._sim_time)
+        observation[11] = self.unitree.GetCalfMotorPos(3, self._sim_time)
+        
+        # Get the position of the robot
+        robot_pos = self.unitree.GetTrunkBody().GetPos()
+        observation[12] = robot_pos.x
+        observation[13] = robot_pos.y
+        observation[14] = robot_pos.z
+        
+        # Get the orientation of the robot
+        robot_rot = self.unitree.GetTrunkBody().GetRot()
+        robot_rot = robot_rot.Q_to_Euler123()
+        observation[15] = robot_rot.x
+        observation[16] = robot_rot.y
+        observation[17] = robot_rot.z
 
         # For not just the priveledged position of the robot
         return observation

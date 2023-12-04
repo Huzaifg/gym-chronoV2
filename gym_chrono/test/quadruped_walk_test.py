@@ -7,6 +7,9 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
+import numpy as np
+import math
+
 
 from gym_chrono.envs.legged.quadruped_walk import quadruped_walk
 
@@ -27,7 +30,7 @@ if __name__ == '__main__':
         print(f"Step {step + 1}")
         # obs, reward, terminated, truncated, info = env.step(
         #     env.action_space.sample())
-        obs, reward, terminated, truncated, info = env.step([0.4, 0.3])
+        obs, reward, terminated, truncated, info = env.step(np.linspace(-math.pi, math.pi, 12))
         done = terminated or truncated
         print("obs=", obs, "reward=", reward, "done=", done)
         env.render()
