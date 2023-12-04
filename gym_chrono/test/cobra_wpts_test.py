@@ -8,7 +8,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
-from gym_chrono.envs.driving.cobra_wpts import cobra_wpts
+from gym_chrono.envs.wheeled.cobra_wpts import cobra_wpts
 
 if __name__ == '__main__':
     env = cobra_wpts()

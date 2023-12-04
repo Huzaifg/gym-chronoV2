@@ -8,7 +8,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
-from gym_chrono.envs.driving.cobra_corridor import cobra_corridor
+from gym_chrono.envs.wheeled.cobra_corridor import cobra_corridor
 
 if __name__ == '__main__':
     env = cobra_corridor()

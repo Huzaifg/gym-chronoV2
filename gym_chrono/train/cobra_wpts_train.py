@@ -33,7 +33,7 @@ from stable_baselines3.common.logger import HParam
 import torch as th
 
 
-from gym_chrono.envs.driving.cobra_wpts import cobra_wpts
+from gym_chrono.envs.wheeled.cobra_wpts import cobra_wpts
 
 
 class TensorboardCallback(BaseCallback):

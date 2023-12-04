@@ -1,7 +1,7 @@
 import gymnasium as gym
 from stable_baselines3 import A2C, SAC, PPO, TD3
-from gym_chrono.envs.driving.art_wpts import art_wpts
-from gym_chrono.envs.driving.cobra_corridor import cobra_corridor
+from gym_chrono.envs.wheeled.art_wpts import art_wpts
+from gym_chrono.envs.wheeled.cobra_corridor import cobra_corridor
 from stable_baselines3.common.evaluation import evaluate_policy
 from gym_chrono.envs.utils.utils import CalcInitialPose, chVector_to_npArray, SetChronoDataDirectories
 

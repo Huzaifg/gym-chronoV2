@@ -9,11 +9,6 @@ Thumbs.db
 *~
 .*.swp
 
-# Ignore virtual environment directories
-venv/
-env/
-node_modules/
-
 # Ignore compiled files
 *.pyc
 *.pyo
@@ -37,7 +32,6 @@ node_modules/
 # (e.g., pipenv, poetry, npm, yarn)
 .lock/
 *.zip
-**/data/
 *.pov
 
 # Ignore the logs folder in the train folder
