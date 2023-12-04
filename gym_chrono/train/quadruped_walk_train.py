@@ -105,7 +105,7 @@ if __name__ == '__main__':
     total_timesteps = 36000 * n_steps * num_cpu
 
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
-                         net_arch=dict(pi=[32,64,128,256,64,32], vf=[32,64,128,256,64,32]))
+                         net_arch=dict(pi=[32,64,128,64,32], vf=[32,64,128,64,32]))
 
     log_path = "logs/"
     # set up logger
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
     
     model = PPO('MlpPolicy', env, learning_rate=1e-3, n_steps=n_steps,
-                batch_size=batch_size, verbose=1, n_epochs=10, policy_kwargs=policy_kwargs,  tensorboard_log=log_path)
+                batch_size=batch_size, verbose=1, n_epochs=10, policy_kwargs=policy_kwargs, clip_range=0.2, tensorboard_log=log_path)
     
     #model_path = os.path.join("ppo_checkpoint8.zip")
     #model = PPO.load(model_path, env)

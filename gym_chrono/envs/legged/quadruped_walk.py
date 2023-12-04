@@ -61,7 +61,7 @@ class quadruped_walk(ChronoBaseEnv):
         SetChronoDataDirectories()
         # Define action space 
         self.action_space = gym.spaces.Box(
-            low=-math.pi, high=math.pi, shape=(12,), dtype=np.float64)
+            low=-3, high=3, shape=(12,), dtype=np.float64)
 
         # Define observation space
         self.observation_space = gym.spaces.Box(
@@ -82,9 +82,8 @@ class quadruped_walk(ChronoBaseEnv):
         # Number of steps dynamics has to take before we apply control
         self._steps_per_control = round(
             1 / (self._step_size * self._control_frequency))
-        self.vehicle_pos = None
         
-        self._prev_pos = None
+        self._prev_pos_x = 0
 
         # ---------------------------------
         # Gym Environment variables
@@ -104,8 +103,7 @@ class quadruped_walk(ChronoBaseEnv):
         self._render_setup = False
 
     def reset(self, seed=None, options=None):
-        self._prev_pos = None
-        
+        self._prev_pos_x = 0
         
         # -----------------------------
         # Set up system with collision
@@ -150,10 +148,6 @@ class quadruped_walk(ChronoBaseEnv):
         return self.observation, {}
 
     def step(self, action):
-        """
-        Take a step in the environment - Frequency by default is 10 Hz.
-        """
-        
         self._sim_time = self.system.GetChTime()
     
         
@@ -221,11 +215,8 @@ class quadruped_walk(ChronoBaseEnv):
     def get_reward(self):
         reward = 0.0
         
-        if self._prev_pos is None:
-            reward = self.unitree.GetTrunkBody().GetPos().x * 10
-            self._prev_pos = self.unitree.GetTrunkBody().GetPos()
-        else:
-            reward = abs(self.unitree.GetTrunkBody().GetPos().x - self._prev_pos.x) * 10
+        reward = (self.unitree.GetTrunkBody().GetPos().x - self._prev_pos_x)
+        self._prev_pos_x = self.unitree.GetTrunkBody().GetPos().x
         
         return reward
 
@@ -233,17 +224,18 @@ class quadruped_walk(ChronoBaseEnv):
         
         if self._sim_time > self._max_time:
             self._terminated = True
-
-        self._terminated = False
+        else:
+            self._terminated = False
 
     def _is_truncated(self):
         
-        if self.unitree.GetTrunkBody().GetPos().z < 0.2:
+        
+        if self.unitree.GetTrunkBody().GetPos().z < 0.15 or self.unitree.GetTrunkBody().GetPos().z > 1.0 or self.unitree.GetTrunkBody().GetPos().y < -1.5 or self.unitree.GetTrunkBody().GetPos().y > 1.5:
             self._truncated = True
-            self.reward -= 500
-            self._debug_reward -= 500
-
-        self._truncated = False
+            self.reward -= 200
+            self._debug_reward -= 200
+        else: 
+            self._truncated = False
 
 
     def get_observation(self):
