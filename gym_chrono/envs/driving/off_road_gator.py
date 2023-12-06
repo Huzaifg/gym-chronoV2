@@ -49,13 +49,14 @@ class off_road_gator(ChronoBaseEnv):
 
     # Supported render modes
     # Human - Render birds eye vier of the vehicle
-    metadata = {'render.modes': ['human', 'agent_pov', 'follow']}
+    metadata = {'additional_render.modes': ['agent_pov', 'None']}
 
-    def __init__(self, render_mode='human'):
+    def __init__(self, additional_render_mode='None'):
         # Check if render mode is suppoerted
-        if render_mode not in off_road_gator.metadata['render.modes']:
-            raise Exception(f'Render mode: {render_mode} not supported')
-        ChronoBaseEnv.__init__(self, render_mode)
+        if additional_render_mode not in off_road_gator.metadata['additional_render.modes']:
+            raise Exception(
+                f'Render mode: {additional_render_mode} not supported')
+        ChronoBaseEnv.__init__(self, additional_render_mode)
 
         # Ser the Chrono data directories for all the assest information
         SetChronoDataDirectories()
@@ -71,15 +72,11 @@ class off_road_gator(ChronoBaseEnv):
         # Observation space has 2 components
         # 1. Camera image (RGB) of size (m_camera_width, m_camera_height)
         # 2. Vehicle state relative to the goal of size (5,)
-        # self.observation_space = gym.spaces.Tuple((
-        #     gym.spaces.Box(low=0, high=255, shape=(
-        #         self.m_camera_height, self.m_camera_width, 3), dtype=np.uint8),
-        #     gym.spaces.Box(low=-100, high=100, shape=(5,), dtype=np.float64)))
-
         self.observation_space = gym.spaces.Dict({
             "image": gym.spaces.Box(low=0, high=255, shape=(
                 3, self.m_camera_height, self.m_camera_width), dtype=np.uint8),
             "data": gym.spaces.Box(low=-100, high=100, shape=(5,), dtype=np.float32)})
+
         # Action space is the steering, throttle and braking where
         # Steering is between -1 and 1
         # Throttle is between -1 and 1, negative is braking
@@ -98,7 +95,7 @@ class off_road_gator(ChronoBaseEnv):
         self.m_chassis = None  # Chassis body of the vehicle
         self.m_chassis_body = None  # Chassis body of the vehicle
         self.m_chassis_collision_box = None  # Chassis collision box of the vehicle
-        self.m_proper_collision = False
+        self.m_proper_collision = True
         # Initial location and rotation of the vehicle
         self.m_initLoc = None
         self.m_initRot = None
@@ -110,14 +107,9 @@ class off_road_gator(ChronoBaseEnv):
         self.m_steps_per_control = round(
             1 / (self.m_step_size * self.m_control_frequency))
 
-        steering_time = 0.3
-        self.m_steeringDelta = (self.m_step_size / steering_time)
-
-        throttle_time = .1
-        self.m_throttleDelta = (self.m_step_size / throttle_time)
-
-        braking_time = 0.3
-        self.m_brakingDelta = (self.m_step_size / braking_time)
+        self.m_steeringDelta = 0.05  # At max the steering can change by 0.05 in 0.1 seconds
+        self.m_throttleDelta = 0.1
+        self.m_brakingDelta = 0.1
 
         # Terrrain
         self.m_terrain = None  # Actual deformable terrain
@@ -154,6 +146,7 @@ class off_road_gator(ChronoBaseEnv):
         self.m_goal = None
         # Distance to goal at previos time step -> To gauge "progress"
         self.m_vector_to_goal = None
+        self.m_vector_to_goal_noNoise = None
         self.m_old_distance = None
         # Observation of the environment
         self.m_observation = None
@@ -167,7 +160,7 @@ class off_road_gator(ChronoBaseEnv):
         self.m_success = False
         # Flag to check if there is a plan to render or not
         self.m_play_mode = False
-        self.m_render_mode = render_mode
+        self.m_additional_render_mode = additional_render_mode
 
     def reset(self, seed=None, options=None):
         """
@@ -183,9 +176,6 @@ class off_road_gator(ChronoBaseEnv):
         self.m_system.Set_G_acc(chrono.ChVectorD(0, 0, -9.81))
         self.m_system.SetCollisionSystemType(
             chrono.ChCollisionSystem.Type_BULLET)
-        # self.m_system.SetSolverType(chrono.ChSolver.Type_BARZILAIBORWEIN)
-        # self.m_system.SetSolverMaxIterations(150)
-        # self.m_system.SetMaxPenetrationRecoverySpeed(4.0)
 
         # -------------------------------
         # Reset the terrain
@@ -197,11 +187,11 @@ class off_road_gator(ChronoBaseEnv):
         # texture_rand = random.randint(0, 3)
 
         texture_file_options = [
-            "terrain/textures/grass.jpg", "terrain/textures/dirt.jpg", "terrain/textures/Gravel034_1K-JPG/Gravel034_1K_Color.jpg"]
+            "terrain/textures/grass.jpg", "terrain/textures/dirt.jpg", "terrain/textures/Gravel034_1K-JPG/Gravel034_1K_Color.jpg", "terrain/textures/concrete.jpg"]
 
         # texture_file = texture_file_options[random.randint(
         #     0, len(texture_file_options) - 1)]
-        texture_file = texture_file_options[0]
+        texture_file = texture_file_options[-1]
         if self.m_isRigid:
             self.m_terrain = veh.RigidTerrain(self.m_system)
             patch_mat = chrono.ChMaterialSurfaceNSC()
@@ -289,14 +279,18 @@ class off_road_gator(ChronoBaseEnv):
         # -------------------------------
         self.m_vehicle = veh.Gator(self.m_system)
         self.m_vehicle.SetContactMethod(chrono.ChContactMethod_NSC)
-        self.m_vehicle.SetChassisCollisionType(
-            veh.CollisionType_NONE)
+        if (self.m_proper_collision):
+            self.m_vehicle.SetChassisCollisionType(
+                veh.CollisionType_PRIMITIVES)
+        else:
+            self.m_vehicle.SetChassisCollisionType(
+                veh.CollisionType_NONE)
         self.m_vehicle.SetChassisFixed(False)
         # self.m_vehicle.SetTireType(veh.TireModelType_TMEASY)
         if (self.m_isRigid):
             self.m_vehicle.SetTireType(veh.TireModelType_TMEASY)
         else:
-            self.m_vehicle.SetTireType(veh.TireModelType_RIGID)
+            self.m_vehicle.SetTireType(veh.TireModelType_RIGID_MESH)
         self.m_vehicle.SetTireStepSize(self.m_step_size)
         # Intialize position that depends on terrain
         gator_theta = self.initialize_gator_pos(seed)
@@ -322,8 +316,6 @@ class off_road_gator(ChronoBaseEnv):
         self.m_vehicle.SetSteeringVisualizationType(
             veh.VisualizationType_PRIMITIVES)
         self.m_chassis_body = self.m_vehicle.GetChassisBody()
-        # self.m_chassis_collision_box = chrono.ChBoxShape(
-        #     3, 2, 0.2)  # Magic numbers from original code
 
         # Set the driver
         self.m_driver = veh.ChDriver(self.m_vehicle.GetVehicle())
@@ -339,16 +331,9 @@ class off_road_gator(ChronoBaseEnv):
             self.m_terrain.SetTexture(veh.GetDataFile(
                 texture_file), self.m_terrain_length*2, self.m_terrain_width*2)
 
-        # for axle in self.m_vehicle.GetVehicle().GetAxles():
-        #     for wheel in axle.GetWheels():
-        #         self.m_terrain.AddMovingPatch(wheel.GetSpindle(), chrono.ChVectorD(
-        #             0, 0, 0), chrono.ChVectorD(0.5, 2*wheel_range, 2*wheel_range))
-
-        # Set some vis
-        # self.m_terrain.SetPlotType(
-        #     veh.SCMTerrain.PLOT_PRESSURE, 0, 30000.2)
-
-        # self.m_terrain.SetMeshWireframe(True)
+            # Set some vis
+            self.m_terrain.SetPlotType(
+                veh.SCMTerrain.PLOT_PRESSURE, 0, 30000.2)
 
         # -------------------------------
         # Set the goal point
@@ -363,6 +348,7 @@ class off_road_gator(ChronoBaseEnv):
         # -------------------------------
         # Initialize the sensors
         # -------------------------------
+        del self.m_sens_manager
         self.m_sens_manager = sens.ChSensorManager(self.m_system)
         # Set the lighting scene
         self.m_sens_manager.scene.AddPointLight(chrono.ChVectorF(
@@ -379,6 +365,7 @@ class off_road_gator(ChronoBaseEnv):
         self.m_old_action = np.zeros((2,))
         self.m_contact_force = 0
         self.m_debug_reward = 0
+        self.m_reward = 0
         self.m_render_setup = False
 
         self.m_terminated = False
@@ -465,7 +452,7 @@ class off_road_gator(ChronoBaseEnv):
                 self.vis.Initialize()
                 self.vis.AddSkyBox()
                 self.vis.AddCamera(chrono.ChVectorD(
-                    0, 0, 100), chrono.ChVectorD(0, 0, 1))
+                    0, 0, 80), chrono.ChVectorD(0, 0, 1))
                 self.vis.AddTypicalLights()
                 self.vis.AddLightWithShadow(chrono.ChVectorD(
                     1.5, -2.5, 5.5), chrono.ChVectorD(0, 0, 0.5), 3, 4, 10, 40, 512)
@@ -539,22 +526,17 @@ class off_road_gator(ChronoBaseEnv):
             raise NotImplementedError('IMU not implemented yet')
 
         self.m_vector_to_goal = self.m_goal - cur_gps_data
+        self.m_vector_to_goal_noNoise = self.m_goal - self.m_vehicle_pos
         vector_to_goal_local = self.m_chassis_body.GetRot().RotateBack(self.m_vector_to_goal)
 
         vehicle_heading = self.m_chassis_body.GetRot().Q_to_Euler123().z
-        local_delX = vector_to_goal_local.x * \
-            np.cos(vehicle_heading) + vector_to_goal_local.y * \
-            np.sin(vehicle_heading)
-        local_delY = -vector_to_goal_local.x * \
-            np.sin(vehicle_heading) + vector_to_goal_local.y * \
-            np.cos(vehicle_heading)
+        vehicle_heading = self.m_vehicle.GetVehicle().GetRot().Q_to_Euler123().z
+
         target_heading_to_goal = np.arctan2(
-            vector_to_goal_local.y, vector_to_goal_local.x)
-
+            self.m_vector_to_goal.y, self.m_vector_to_goal.x)
         vehicle_speed = self.m_chassis_body.GetPos_dt().Length()
-
         observation_array = np.array(
-            [local_delX, local_delY, vehicle_heading, target_heading_to_goal, vehicle_speed]).astype(np.float32)
+            [vector_to_goal_local.x, vector_to_goal_local.y, vehicle_heading, target_heading_to_goal, vehicle_speed]).astype(np.float32)
 
         # Flip rgba to (3, height, width) from (height, width, 3)
         rgba = np.transpose(rgba, (2, 0, 1)).astype(np.uint8)
@@ -566,19 +548,20 @@ class off_road_gator(ChronoBaseEnv):
         Not using delta action for now
         """
         # Compute the progress made
-        progress_scale = 1.  # coefficient for scaling progress reward
-        delta_action_scale = 0.5  # coefficient for scaling delta action reward
-        distance = self.m_vector_to_goal.Length()
+        progress_scale = 20.  # coefficient for scaling progress reward
+        distance = self.m_vector_to_goal_noNoise.Length()
         # The progress made with the last action
         progress = self.m_old_distance - distance
 
-        # delta_action = np.linalg.norm(
-        #     np.array(self.m_action) - np.array(self.m_old_action))
+        reward = progress_scale * progress
+
+        # If we have not moved even by 1 cm in 0.1 seconds give a penalty
+        if np.abs(progress) < 0.01:
+            reward -= 10
 
         self.m_old_distance = distance
-        self.m_old_action = self.m_action
 
-        return (progress_scale * progress)
+        return reward
 
     def _is_terminated(self):
         """
@@ -586,7 +569,7 @@ class off_road_gator(ChronoBaseEnv):
         """
         # If we are within a certain distance of the goal -> Terminate and give big reward
         # if np.linalg.norm(self.observation[:3] - self.goal) < 0.4:
-        if np.linalg.norm(self.m_vector_to_goal.Length()) < 10:
+        if np.linalg.norm(self.m_vector_to_goal_noNoise.Length()) < 10:
             print('--------------------------------------------------------------')
             print('Goal Reached')
             print('Initial position: ', self.m_initLoc)
@@ -597,19 +580,20 @@ class off_road_gator(ChronoBaseEnv):
             self.m_terminated = True
             self.m_success = True
 
-        # If we have exceeded the max time -> Terminate
+        # If we have exceeded the max time -> Terminate and give penalty for how far we are from the goal
         if self.m_system.GetChTime() > self.m_max_time:
             print('--------------------------------------------------------------')
             print('Time out')
             print('Initial position: ', self.m_initLoc)
             # dist = np.linalg.norm(self.observation[:3] - self.goal)
-            dist = self.m_vector_to_goal.Length()
+            dist = self.m_vector_to_goal_noNoise.Length()
             print('Final position of Gator: ',
                   self.m_chassis_body.GetPos())
             print('Goal position: ', self.m_goal)
             print('Distance to goal: ', dist)
-            # Penalize based on how far we are from the goal
-            self.m_reward -= 400
+            # Give it a reward based on how close it reached the goal
+            # self.m_reward -= 400
+            self.m_reward -= 10 * dist
 
             self.m_debug_reward += self.m_reward
             print('Reward: ', self.m_reward)
@@ -624,14 +608,14 @@ class off_road_gator(ChronoBaseEnv):
         collision = self.m_assets.CheckContact(
             self.m_chassis_body, proper_collision=self.m_proper_collision)
         if collision:
-            self.m_reward -= 250
+            self.m_reward -= 600
             print('--------------------------------------------------------------')
             print(f'Crashed')
             print('--------------------------------------------------------------')
             self.m_debug_reward += self.m_reward
             self.m_truncated = True
         if (self._fallen_off_terrain()):
-            self.m_reward -= 250
+            self.m_reward -= 600
             print('--------------------------------------------------------------')
             print('Fallen off terrain')
             print('--------------------------------------------------------------')
@@ -663,11 +647,10 @@ class off_road_gator(ChronoBaseEnv):
         theta = random.random() * 2 * np.pi
         x, y = self.m_terrain_length * 0.5 * \
             np.cos(theta), self.m_terrain_width * 0.5 * np.sin(theta)
-        z = self.m_terrain.GetHeight(chrono.ChVectorD(x, y, 0)) + 0.25
+        z = self.m_terrain.GetHeight(chrono.ChVectorD(x, y, 0.)) + 0.25
         ang = np.pi + theta
         self.m_initLoc = chrono.ChVectorD(x, y, z)
         self.m_initRot = chrono.Q_from_AngZ(ang)
-
         self.m_vehicle.SetInitPosition(
             chrono.ChCoordsysD(self.m_initLoc, self.m_initRot))
         return theta
@@ -708,7 +691,7 @@ class off_road_gator(ChronoBaseEnv):
         goal_mat.SetDiffuseColor(chrono.ChColor(1., 0., 0.))
 
         goal_body = chrono.ChBodyEasySphere(
-            0.2, 1000, True, False, goal_contact_material)
+            0.55, 1000, True, False, goal_contact_material)
 
         goal_body.SetPos(self.m_goal)
         goal_body.SetBodyFixed(True)
@@ -786,11 +769,11 @@ class off_road_gator(ChronoBaseEnv):
                 self.m_camera_height,  # image height
                 chrono.CH_C_PI / 3,  # FOV
                 # supersampling factor (higher improves quality of the image)
-                5
+                6
             )
             self.m_camera.SetName("Camera Sensor")
             self.m_camera.PushFilter(sens.ChFilterRGBA8Access())
-            if (self.m_render_mode == 'agent_pov'):
+            if (self.m_additional_render_mode == 'agent_pov'):
                 self.m_camera.PushFilter(sens.ChFilterVisualize(
                     self.m_camera_width, self.m_camera_height, "Agent POV"))
             self.m_sens_manager.AddSensor(self.m_camera)
@@ -834,11 +817,19 @@ class off_road_gator(ChronoBaseEnv):
             self.m_imu.PushFilter(sens.ChFilterMagnetAccess())
             self.m_sens_manager.AddSensor(self.m_imu)
 
-    def set_play_mode(self):
+    def set_nice_vehicle_mesh(self):
         self.m_play_mode = True
 
     def close(self):
+        del self.m_vehicle
+        del self.m_sens_manager
+        del self.m_system
+        del self.m_assets.system
+        del self.m_assets
         del self
 
     def __del__(self):
         del self.m_sens_manager
+        del self.m_system
+        del self.m_assets.system
+        del self.m_assets
