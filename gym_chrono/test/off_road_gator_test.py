@@ -1,5 +1,5 @@
 import gymnasium as gym
-from gym_chrono.envs.driving.off_road_gator import off_road_gator
+from gym_chrono.envs.wheeled.off_road_gator import off_road_gator
 
 render = True
 additional_render = True

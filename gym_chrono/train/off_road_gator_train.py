@@ -33,7 +33,7 @@ from stable_baselines3.common.logger import HParam
 import torch as th
 
 
-from gym_chrono.envs.driving.off_road_gator import off_road_gator
+from gym_chrono.envs.wheeled.off_road_gator import off_road_gator
 from gym_chrono.train.custom_networks.gatorCombinedFeatures import CustomCombinedExtractor
 
 

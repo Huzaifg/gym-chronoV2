@@ -1,6 +1,6 @@
 import gymnasium as gym
 from stable_baselines3 import PPO
-from gym_chrono.envs.driving.off_road_gator import off_road_gator
+from gym_chrono.envs.wheeled.off_road_gator import off_road_gator
 
 import os
 
