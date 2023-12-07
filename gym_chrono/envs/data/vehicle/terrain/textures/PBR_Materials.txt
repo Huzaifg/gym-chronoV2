@@ -1,5 +1,3 @@
-PBR materials taken from: https://ambientcg.com
-
-All ambientCG assets are provided under the
-Creative Commons CC0 1.0 Universal License 
-(https://creativecommons.org/publicdomain/zero/1.0/)
+version https://git-lfs.github.com/spec/v1
+oid sha256:9cb98634e2db5ce173e7d275f56a97dd2aa0d658b866153ff21bc33bf9bdeb8c
+size 190
